@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AIC 视觉逻辑算法应用赛 · 决策主树
+  ------------------------------------------------------------------
+  流程：初始化 -> 12 个位点循环 { 移动 -> 等 vision 结果 -> 按类型分发处理子树 } -> 汇总
+  约定：material_type 是字符串 "0".."4"（与 vision 发的 std_msgs/String 同型），
+        "0" 表示本点位未识别成功，落到 Switch4 的默认分支。
+  节点与端口说明：docs/guides/decision_bt_architecture.md
+  可改之处：超时 {vision_timeout} 由 ROS 参数下发；四个处理子树内部的节点可自由增删，
+        主树不需要改。
+-->
+<root BTCPP_format="4" main_tree_to_execute="AicSort">
+
+  <BehaviorTree ID="AicSort">
+    <Sequence name="ROOT">
+      <InitRun warehouse_yaml="{warehouse_yaml}" reset_results="true"/>
+      <WhileSlotsRemain name="SlotsLoop">
+        <Sequence name="OneSlot">
+          <GotoNextSlot/>
+          <Fallback name="VisionOrTimeout">
+            <WaitVisionResult timeout="{vision_timeout}"/>
+            <RecordSlotResult result="TIMEOUT" note="vision 超时未返回本位点结果"/>
+          </Fallback>
+          <Switch4 variable="{material_type}" case_1="1" case_2="2" case_3="3" case_4="4">
+            <SubTree ID="HandleMaterial1"/>
+            <SubTree ID="HandleMaterial2"/>
+            <SubTree ID="HandleMaterial3"/>
+            <SubTree ID="HandleMaterial4"/>
+            <SkipSlot note="类型非法或未识别；TIMEOUT 已在上游记账"/>
+          </Switch4>
+        </Sequence>
+      </WhileSlotsRemain>
+      <RunSummary/>
+    </Sequence>
+  </BehaviorTree>
+
+  <!--
+    四类物料的处理子树：现阶段的共同结构 = 把任务交给 control 桥接 + 记一行结果。
+    control 侧留白：后续若要「等机械到位 / 等抓取完成 / 分类型码放到不同库位」，
+    在这里增删节点即可，主树与话题契约都不用动。
+  -->
+  <BehaviorTree ID="HandleMaterial1">
+    <Sequence name="Handle_1_SCRATCH">
+      <DispatchMaterialTask action="HANDLE" note="类型 1 = 划痕 的处理流程（control 侧留白）"/>
+      <RecordSlotResult result="OK"/>
+    </Sequence>
+  </BehaviorTree>
+
+  <BehaviorTree ID="HandleMaterial2">
+    <Sequence name="Handle_2_STAIN">
+      <DispatchMaterialTask action="HANDLE" note="类型 2 = 污渍 的处理流程（control 侧留白）"/>
+      <RecordSlotResult result="OK"/>
+    </Sequence>
+  </BehaviorTree>
+
+  <BehaviorTree ID="HandleMaterial3">
+    <Sequence name="Handle_3_CHIP">
+      <DispatchMaterialTask action="HANDLE" note="类型 3 = 缺角 的处理流程（control 侧留白）"/>
+      <RecordSlotResult result="OK"/>
+    </Sequence>
+  </BehaviorTree>
+
+  <BehaviorTree ID="HandleMaterial4">
+    <Sequence name="Handle_4_HOLE">
+      <DispatchMaterialTask action="HANDLE" note="类型 4 = 孔洞 的处理流程（control 侧留白）"/>
+      <RecordSlotResult result="OK"/>
+    </Sequence>
+  </BehaviorTree>
+
+  <!-- Groot2 靠这段渲染节点与端口；增删端口后请同步这里 -->
+  <TreeNodesModel>
+    <Action ID="InitRun">
+      <input_port name="warehouse_yaml" default="" type="std::string">货架布局 YAML 路径；留空则沿用 runner 已加载的布局</input_port>
+      <input_port name="reset_results" default="true" type="bool">是否清空结果表（新一次巡视置 true）</input_port>
+    </Action>
+    <Decorator ID="WhileSlotsRemain"/>
+    <Action ID="GotoNextSlot"/>
+    <Action ID="WaitVisionResult">
+      <input_port name="timeout" default="3.0" type="double">等待 vision 结果的超时（秒）</input_port>
+      <input_port name="after_seq" default="{vision_seq_before_move}" type="uint64_t">只接受序号大于该值的识别结果</input_port>
+    </Action>
+    <Action ID="DispatchMaterialTask">
+      <input_port name="action" default="HANDLE" type="std::string">任务动作：GOTO / HANDLE / HOME</input_port>
+      <input_port name="material_type" default="{material_type}" type="std::string">物料类型字符串，可按子树覆盖</input_port>
+      <input_port name="note" default="" type="std::string">备注，透传给 control</input_port>
+    </Action>
+    <Action ID="SkipSlot">
+      <input_port name="note" default="" type="std::string">说明</input_port>
+    </Action>
+    <Action ID="RecordSlotResult">
+      <input_port name="result" default="OK" type="std::string">本行结果：OK / TIMEOUT / UNKNOWN</input_port>
+      <input_port name="note" default="" type="std::string">备注</input_port>
+    </Action>
+    <Action ID="RunSummary"/>
+  </TreeNodesModel>
+
+</root>

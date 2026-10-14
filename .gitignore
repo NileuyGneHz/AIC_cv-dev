@@ -1,0 +1,45 @@
+# === ROS 2 / colcon 构建产物 ===
+build/
+install/
+log/
+logs/
+
+# === 工作区临时目录 ===
+.buildcache/
+.scratch/
+.Trash-*/
+
+# === AI 助手本地状态（不进仓库）===
+.workbuddy/
+
+# === 大文件：数据集 / 模型权重 / 视频（AGENTS.md 硬约束 4）===
+data/datasets/*
+!data/datasets/.gitkeep
+data/samples/*
+!data/samples/.gitkeep
+data/results/*
+!data/results/.gitkeep
+*.mp4
+*.avi
+*.mkv
+*.flv
+*.bag
+*.pt
+*.pth
+*.onnx
+*.weights
+*.engine
+
+# === Python / C++ 中间产物 ===
+__pycache__/
+*.py[cod]
+*.so
+*.o
+*.a
+*.gch
+
+# === 编辑器 / IDE ===
+.vscode/
+.idea/
+*.swp
+*~

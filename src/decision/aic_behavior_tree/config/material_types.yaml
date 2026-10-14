@@ -1,0 +1,16 @@
+# 物料类型「暂名」对照表。
+#
+# 现状（2026-10-15）：vision 只返回字符串 "1".."4"，语义由本表解释。
+#   1 = 划痕（scratch）
+#   2 = 污渍（stain）
+#   3 = 缺角（chip）
+#   4 = 孔洞（hole）
+# 以上名称按 AGENTS.md 的赛题口径「划痕 / 污渍 / 缺角 / 孔洞」排列，属**暂名**；
+# 赛题 PDF 或裁判口径明确后，改本表 + src/material_types.cpp 的 materialTypeName()。
+#
+# 注意：决策逻辑不依赖名称，只依赖 1..4 的编号（四棵处理子树一一对应）。
+material_types:
+  "1": { name: "划痕", en: "scratch" }
+  "2": { name: "污渍", en: "stain" }
+  "3": { name: "缺角", en: "chip" }
+  "4": { name: "孔洞", en: "hole" }

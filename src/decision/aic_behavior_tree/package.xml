@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>aic_behavior_tree</name>
+  <version>0.1.0</version>
+  <description>AIC 赛决策层：行为树 + vision/control 桥接（12 位点巡视 -> 按物料类型分发子树）</description>
+  <maintainer email="saber2089467296@163.com">nileuy</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>ament_index_cpp</depend>
+  <depend>std_msgs</depend>
+  <depend>behaviortree_cpp</depend>
+  <depend>aic_msgs</depend>
+  <depend>aic_warehouse</depend>
+
+  <exec_depend>ros2launch</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

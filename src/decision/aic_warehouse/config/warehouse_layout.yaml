@@ -1,0 +1,21 @@
+# 圆形铁片物料货架布局（决策侧只用「几何编号 + 访问顺序」）
+#
+# 决策只下发 库位号/行/列/第几次移动；坐标换算、行程与速度由 control 负责
+# （见 docs/guides/decision_control_interface.md）。
+#
+# 赛题口径（初版理解，2026-10-15）：3 行 x 4 列 = 12 个库位；从右下角出发，
+# 沿行扫 4 格 -> 上行 1 格 -> 反向扫 4 格 -> 上行 1 格 -> 再反向扫 4 格，共 12 次移动。
+
+rows: 3
+cols: 4
+
+# 出发点：bottom_right = 右下角（操作者正面视角）。可选 bottom_left / top_right / top_left
+start_corner: bottom_right
+
+# 首次扫行方向：auto = 自动取「与出发点相反的一侧」（右下角出发即向左扫）
+# 也可显式写 left / right；若与出发点冲突会被自动纠正并打印告警
+first_direction: auto
+
+# 若现场观察方向与「右」相反，把 start_corner 改成 bottom_left 即可整条路径镜像，
+# 其余逻辑（节点、话题、子树）都不用动。
+frame_note: "「左/右」按操作者正面观察货架的视角定义"
