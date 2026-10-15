@@ -136,25 +136,48 @@ BT::NodeStatus WhileSlotsRemain::tick()
     return BT::NodeStatus::FAILURE;
   }
 
-  while (ctx_.cursor->hasNext()) {
-    const int before = ctx_.cursor->visitIndex();
+  // 用无条件循环而不是 while(hasNext())：hasNext() 的语义是「当前位点之后还有没有」，
+  // 最后一个位点（visit 12）的等待发生在 hasNext() 已经为 false 之后——
+  // 若在重入时重查 hasNext，会直接跳过子树的最后一拍，visit 12 永远走不完。
+  while (true) {
+    if (!child_started_) {
+      // 只在迭代首次进入时做两件事：查是否还有位点、快照起点游标。
+      // RUNNING 期间 tick() 会被反复重入，重入时不能重照，否则推进检测必然误报。
+      if (!ctx_.cursor->hasNext()) {
+        return BT::NodeStatus::SUCCESS;
+      }
+      iteration_start_visit_ = ctx_.cursor->visitIndex();
+      child_started_ = true;
+    }
     const BT::NodeStatus child_status = child_node_->executeTick();
 
     if (child_status == BT::NodeStatus::RUNNING) {
-      return child_status;
+      return child_status;  // 保持 child_started_，下次 tick 接着这一轮跑
     }
+    child_started_ = false;
+
     if (child_status != BT::NodeStatus::SUCCESS) {
       return child_status;
     }
     // 防死循环：子节点成功了却没推进游标，说明 OneSlot 里缺 GotoNextSlot
-    if (ctx_.cursor->visitIndex() == before) {
+    if (ctx_.cursor->visitIndex() == iteration_start_visit_) {
       RCLCPP_ERROR(
         ctx_.logger,
         "[decision] SlotsRemain 检测到子节点未推进游标（检查 OneSlot 是否包含 GotoNextSlot）");
       return BT::NodeStatus::FAILURE;
     }
+    // 坑：while 型装饰器每轮结束必须复位子树。v4 的 Sequence 返回 SUCCESS 后停在
+    //     "已完成"状态，不复位的话下一轮 executeTick 会立刻再回 SUCCESS（游标不动）。
+    //     haltChild() 把子树打回 IDLE，下一轮从头跑 OneSlot。
+    haltChild();
   }
-  return BT::NodeStatus::SUCCESS;
+}
+
+void WhileSlotsRemain::halt()
+{
+  // 树被外层中止时同步清掉迭代状态，下次 tick 从新的一轮开始
+  child_started_ = false;
+  DecoratorNode::halt();
 }
 
 // --------------------------------------------------------------- GotoNextSlot

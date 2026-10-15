@@ -41,6 +41,13 @@ private:
 };
 
 /// 循环装饰器：只要货架还有下一位点，就重复 tick 子树。
+///
+/// 坑（两处都踩过）：
+///   1. tick() 在子树 RUNNING 期间会被**反复重入**，「本轮起点游标」只能在迭代
+///      首次进入时快照一次（child_started_ 标志），否则位点内的每次重入都会把
+///      起点错记成当前值，推进检测必然误报。
+///   2. 子树整轮返回 SUCCESS 后停在「已完成」状态，下一轮必须 haltChild()
+///      打回 IDLE，否则 Sequence 会秒回 SUCCESS，12 个位点只走 1 个。
 class WhileSlotsRemain : public BT::DecoratorNode
 {
 public:
@@ -48,9 +55,12 @@ public:
 
   static BT::PortsList providedPorts();
   BT::NodeStatus tick() override;
+  void halt() override;
 
 private:
   DecisionContext ctx_;
+  bool child_started_{false};   // 本轮迭代是否已经开始（跨多次 tick 重入保持）
+  int iteration_start_visit_{0};  // 本轮迭代开始时的游标快照（防死循环用）
 };
 
 /// 推进到下一位点，并把 GOTO 任务交给 control 桥接；同时记住「此刻的 vision 序号」。

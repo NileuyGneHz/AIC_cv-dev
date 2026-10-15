@@ -99,8 +99,10 @@ run_scenario() {
 
 # 期望的物料类型序列（假 vision 按 1,2,3,4 循环应答）
 TYPES_ALL="1,2,3,4,1,2,3,4,1,2,3,4"
-# 场景 B：第 5、10 次应答是非法值 "9" -> 这两个位点识别失败，类型按 0 记
-TYPES_WITH_INVALID="1,2,3,4,0,1,2,3,4,0,1,2"
+# 场景 B：第 5、10 次应答是非法值 "9" -> 这两个位点识别失败，类型按 0 记。
+# 注意：假 vision 的非法值也占用 sequence 计数（fake_vision_pub.publish 对 '9' 同样
+# published+=1），所以非法位之后的实际应答是 2,3,4 / 3,4，而不是顺延的 1,2。
+TYPES_WITH_INVALID="1,2,3,4,0,2,3,4,1,0,3,4"
 
 run_scenario A 0 12 0 "${TYPES_ALL}" 3.0
 run_scenario B 5 10 2 "${TYPES_WITH_INVALID}" 0.6

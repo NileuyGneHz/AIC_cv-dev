@@ -25,6 +25,7 @@ import threading
 
 import rclpy
 from aic_msgs.msg import MaterialTask
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_msgs.msg import String
 
@@ -111,13 +112,15 @@ def main():
     node = FakeVision(args)
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
+        # ExternalShutdownException：被 verify 脚本 kill 时的正常退出路径，不算错误
         pass
     finally:
         node.get_logger().info(
             "退出：收到 GOTO %d 次，发布 %d 条" % (node.received_goto, node.published))
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
     return 0
 
 

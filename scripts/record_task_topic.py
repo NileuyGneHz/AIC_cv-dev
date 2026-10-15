@@ -21,6 +21,14 @@ from aic_msgs.msg import MaterialTask
 from rclpy.node import Node
 
 
+class _RecorderDone(Exception):
+    """正常结束的哨兵：从回调里抛出去终止 spin。
+
+    坑：不要在回调里直接调 rclpy.shutdown()——它会让 spin 的退出路径变得不可靠
+    （表现为汇总/CSV 写不出来，进程悄悄死掉）。抛哨兵异常最稳。
+    """
+
+
 class TaskRecorder(Node):
 
     def __init__(self, args):
@@ -53,12 +61,12 @@ class TaskRecorder(Node):
 
         if self.args.expect_handle > 0 and len(self.handles) >= self.args.expect_handle:
             self.get_logger().info("已收满 %d 条 HANDLE，结束记录" % len(self.handles))
-            rclpy.shutdown()
+            raise _RecorderDone()
 
     def check_deadline(self):
         if time.monotonic() >= self.deadline:
             self.get_logger().info("到达记录时长上限，结束记录")
-            rclpy.shutdown()
+            raise _RecorderDone()
 
     def write_csv(self):
         with open(self.args.out, 'w', newline='', encoding='utf-8') as fh:
@@ -95,7 +103,7 @@ def main():
     node = TaskRecorder(args)
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (_RecorderDone, KeyboardInterrupt):
         pass
     finally:
         node.write_csv()

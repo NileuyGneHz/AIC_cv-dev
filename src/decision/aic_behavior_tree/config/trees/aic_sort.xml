@@ -22,10 +22,22 @@
             <RecordSlotResult result="TIMEOUT" note="vision 超时未返回本位点结果"/>
           </Fallback>
           <Switch4 variable="{material_type}" case_1="1" case_2="2" case_3="3" case_4="4">
-            <SubTree ID="HandleMaterial1"/>
-            <SubTree ID="HandleMaterial2"/>
-            <SubTree ID="HandleMaterial3"/>
-            <SubTree ID="HandleMaterial4"/>
+            <SubTree ID="HandleMaterial1"
+                     visit_index="{visit_index}" slot_id="{slot_id}" row="{row}" col="{col}"
+                     material_type="{material_type}" material_raw="{material_raw}"
+                     slot_start_time="{slot_start_time}"/>
+            <SubTree ID="HandleMaterial2"
+                     visit_index="{visit_index}" slot_id="{slot_id}" row="{row}" col="{col}"
+                     material_type="{material_type}" material_raw="{material_raw}"
+                     slot_start_time="{slot_start_time}"/>
+            <SubTree ID="HandleMaterial3"
+                     visit_index="{visit_index}" slot_id="{slot_id}" row="{row}" col="{col}"
+                     material_type="{material_type}" material_raw="{material_raw}"
+                     slot_start_time="{slot_start_time}"/>
+            <SubTree ID="HandleMaterial4"
+                     visit_index="{visit_index}" slot_id="{slot_id}" row="{row}" col="{col}"
+                     material_type="{material_type}" material_raw="{material_raw}"
+                     slot_start_time="{slot_start_time}"/>
             <SkipSlot note="类型非法或未识别；TIMEOUT 已在上游记账"/>
           </Switch4>
         </Sequence>
@@ -38,6 +50,11 @@
     四类物料的处理子树：现阶段的共同结构 = 把任务交给 control 桥接 + 记一行结果。
     control 侧留白：后续若要「等机械到位 / 等抓取完成 / 分类型码放到不同库位」，
     在这里增删节点即可，主树与话题契约都不用动。
+
+    坑：BT.CPP 4.10 的 <SubTree> 黑板是**隔离**的（不存在 __shared_blackboard 属性），
+    子树里直接读 {slot_id} 等键会全部拿到兜底值（表现为 HANDLE 发到 slot 00 / type 0）。
+    所以每个 SubTree 都必须显式映射位点相关端口；子树里新增要读的黑板键时，
+    这四处映射要同步加。
   -->
   <BehaviorTree ID="HandleMaterial1">
     <Sequence name="Handle_1_SCRATCH">
