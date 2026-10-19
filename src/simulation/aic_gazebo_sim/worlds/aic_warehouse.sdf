@@ -1,0 +1,463 @@
+<?xml version="1.0" ?>
+<!--
+  自动生成，勿手改：由 scripts/gen_world.py 从 config/sim_layout.yaml 生成。
+  AIC 视觉逻辑算法应用赛 · 12 库位货架 + 三轴龙门 仿真世界（Ignition Fortress）
+-->
+<sdf version="1.6">
+  <world name="aic_warehouse">
+    <physics name="4ms" type="dartsim">
+      <max_step_size>0.004</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+    <gravity>0 0 -9.8</gravity>
+
+    <scene>
+      <ambient>0.60 0.60 0.63 1</ambient>
+      <background>0.72 0.75 0.80 1</background>
+      <shadows>false</shadows>
+    </scene>
+
+    <!-- 相机等传感器的渲染系统必须显式加载（Fortress 与 classic 的差别之一） -->
+    <plugin filename="ignition-gazebo-sensors-system"
+            name="ignition::gazebo::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+
+    <!-- 物理系统必须显式加载：本机 Fortress 在有 <physics> 段时并不会自动装 physics
+         system，且引擎库位于 ign-physics-5/engine-plugins、默认搜索路径找不到。
+         漏写这一段的表现极具迷惑性——世界能起、相机能出图、时钟在走，但「什么都不动」。 -->
+    <plugin filename="ignition-gazebo-physics-system"
+            name="ignition::gazebo::systems::Physics">
+      <engine>ignition-physics-dartsim-plugin</engine>
+    </plugin>
+
+    <!-- SceneBroadcaster：/world/<w>/state 服务与 pose/info 话题靠它；
+         不加载时 `ign model -l` 查位姿会超时，TF/位姿类工具也全瞎 -->
+    <plugin filename="ignition-gazebo-scene-broadcaster-system"
+            name="ignition::gazebo::systems::SceneBroadcaster"/>
+
+    <light type="directional" name="sun">
+      <pose>0 0 3 0 0 0</pose>
+      <cast_shadows>false</cast_shadows>
+      <diffuse>0.55 0.55 0.55 1</diffuse>
+      <specular>0.0 0.0 0.0 1</specular>
+      <direction>-0.25 0.20 -0.95</direction>
+    </light>
+
+    <!-- 货架正上方的补光，保证俯视相机下铁片表面照度均匀 -->
+    <light type="point" name="rack_fill">
+      <pose>0 0 1.6 0 0 0</pose>
+      <diffuse>0.42 0.42 0.42 1</diffuse>
+      <specular>0.0 0.0 0.0 1</specular>
+      <attenuation>
+        <range>4</range>
+        <constant>1.0</constant>
+        <linear>0.04</linear>
+        <quadratic>0.0</quadratic>
+      </attenuation>
+    </light>
+
+    <!-- 地面 -->
+    <model name="ground">
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry><plane><normal>0 0 1</normal><size>6 6</size></plane></geometry>
+          <material>
+            <ambient>0.28 0.29 0.31 1</ambient>
+            <diffuse>0.33 0.34 0.36 1</diffuse>
+          </material>
+        </visual>
+        <collision name="collision">
+          <geometry><plane><normal>0 0 1</normal><size>6 6</size></plane></geometry>
+        </collision>
+      </link>
+    </model>
+
+    <!-- 货架台面（1020 x 520 mm，上表面 z=0.1 m） -->
+    <model name="rack">
+      <static>true</static>
+      <pose>0.0 0.0 0 0 0 0</pose>
+      <link name="deck">
+        <visual name="deck">
+          <pose>0 0 0.09000000000000001 0 0 0</pose>
+          <geometry><box><size>1.02 0.5201 0.02</size></box></geometry>
+          <material>
+            <ambient>0.55 0.56 0.58 1</ambient>
+            <diffuse>0.62 0.63 0.65 1</diffuse>
+            <specular>0.0 0.0 0.0 1</specular>
+          </material>
+        </visual>
+        <collision name="deck_col">
+          <geometry><box><size>1.02 0.5201 0.02</size></box></geometry>
+        </collision>
+        <visual name="tile_1">
+          <pose>-0.3750 -0.1667 0.1015 0 0 0</pose>
+          <geometry><box><size>0.115 0.115 0.003</size></box></geometry>
+          <material>
+            <ambient>0.10 0.11 0.13 1</ambient>
+            <diffuse>0.14 0.15 0.17 1</diffuse>
+          </material>
+        </visual>
+        <visual name="tile_2">
+          <pose>-0.1250 -0.1667 0.1015 0 0 0</pose>
+          <geometry><box><size>0.115 0.115 0.003</size></box></geometry>
+          <material>
+            <ambient>0.10 0.11 0.13 1</ambient>
+            <diffuse>0.14 0.15 0.17 1</diffuse>
+          </material>
+        </visual>
+        <visual name="tile_3">
+          <pose>0.1250 -0.1667 0.1015 0 0 0</pose>
+          <geometry><box><size>0.115 0.115 0.003</size></box></geometry>
+          <material>
+            <ambient>0.10 0.11 0.13 1</ambient>
+            <diffuse>0.14 0.15 0.17 1</diffuse>
+          </material>
+        </visual>
+        <visual name="tile_4">
+          <pose>0.3750 -0.1667 0.1015 0 0 0</pose>
+          <geometry><box><size>0.115 0.115 0.003</size></box></geometry>
+          <material>
+            <ambient>0.10 0.11 0.13 1</ambient>
+            <diffuse>0.14 0.15 0.17 1</diffuse>
+          </material>
+        </visual>
+        <visual name="tile_5">
+          <pose>-0.3750 0.0000 0.1015 0 0 0</pose>
+          <geometry><box><size>0.115 0.115 0.003</size></box></geometry>
+          <material>
+            <ambient>0.10 0.11 0.13 1</ambient>
+            <diffuse>0.14 0.15 0.17 1</diffuse>
+          </material>
+        </visual>
+        <visual name="tile_6">
+          <pose>-0.1250 0.0000 0.1015 0 0 0</pose>
+          <geometry><box><size>0.115 0.115 0.003</size></box></geometry>
+          <material>
+            <ambient>0.10 0.11 0.13 1</ambient>
+            <diffuse>0.14 0.15 0.17 1</diffuse>
+          </material>
+        </visual>
+        <visual name="tile_7">
+          <pose>0.1250 0.0000 0.1015 0 0 0</pose>
+          <geometry><box><size>0.115 0.115 0.003</size></box></geometry>
+          <material>
+            <ambient>0.10 0.11 0.13 1</ambient>
+            <diffuse>0.14 0.15 0.17 1</diffuse>
+          </material>
+        </visual>
+        <visual name="tile_8">
+          <pose>0.3750 0.0000 0.1015 0 0 0</pose>
+          <geometry><box><size>0.115 0.115 0.003</size></box></geometry>
+          <material>
+            <ambient>0.10 0.11 0.13 1</ambient>
+            <diffuse>0.14 0.15 0.17 1</diffuse>
+          </material>
+        </visual>
+        <visual name="tile_9">
+          <pose>-0.3750 0.1667 0.1015 0 0 0</pose>
+          <geometry><box><size>0.115 0.115 0.003</size></box></geometry>
+          <material>
+            <ambient>0.10 0.11 0.13 1</ambient>
+            <diffuse>0.14 0.15 0.17 1</diffuse>
+          </material>
+        </visual>
+        <visual name="tile_10">
+          <pose>-0.1250 0.1667 0.1015 0 0 0</pose>
+          <geometry><box><size>0.115 0.115 0.003</size></box></geometry>
+          <material>
+            <ambient>0.10 0.11 0.13 1</ambient>
+            <diffuse>0.14 0.15 0.17 1</diffuse>
+          </material>
+        </visual>
+        <visual name="tile_11">
+          <pose>0.1250 0.1667 0.1015 0 0 0</pose>
+          <geometry><box><size>0.115 0.115 0.003</size></box></geometry>
+          <material>
+            <ambient>0.10 0.11 0.13 1</ambient>
+            <diffuse>0.14 0.15 0.17 1</diffuse>
+          </material>
+        </visual>
+        <visual name="tile_12">
+          <pose>0.3750 0.1667 0.1015 0 0 0</pose>
+          <geometry><box><size>0.115 0.115 0.003</size></box></geometry>
+          <material>
+            <ambient>0.10 0.11 0.13 1</ambient>
+            <diffuse>0.14 0.15 0.17 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="legs">
+        <visual name="leg_-1_-1">
+          <pose>-0.4600 -0.2101 0.0400 0 0 0</pose>
+          <geometry><box><size>0.04 0.04 0.08</size></box></geometry>
+          <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.36 0.37 0.39 1</diffuse></material>
+        </visual>
+        <visual name="leg_-1_1">
+          <pose>-0.4600 0.2101 0.0400 0 0 0</pose>
+          <geometry><box><size>0.04 0.04 0.08</size></box></geometry>
+          <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.36 0.37 0.39 1</diffuse></material>
+        </visual>
+        <visual name="leg_1_-1">
+          <pose>0.4600 -0.2101 0.0400 0 0 0</pose>
+          <geometry><box><size>0.04 0.04 0.08</size></box></geometry>
+          <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.36 0.37 0.39 1</diffuse></material>
+        </visual>
+        <visual name="leg_1_1">
+          <pose>0.4600 0.2101 0.0400 0 0 0</pose>
+          <geometry><box><size>0.04 0.04 0.08</size></box></geometry>
+          <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.36 0.37 0.39 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ===== 12 块圆形铁片（静态；类型见 sim_layout.yaml materials.types）===== -->
+    <model name="material_01_scratch">
+      <static>true</static>
+      <pose>-0.3750 -0.1667 0.1060 0 0 0</pose>
+      <link name="disc">
+        <visual name="disc">
+          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <material>
+            <ambient>0.42 0.44 0.46 1</ambient>
+            <diffuse>0.50 0.52 0.54 1</diffuse>
+            <specular>0.0 0.0 0.0 1</specular>
+          </material>
+        </visual>
+        <visual name="defect_scratch">
+          <pose>0.004 -0.006 0.00340 0 0 0.436</pose>
+          <geometry><box><size>0.052 0.0025 0.0008</size></box></geometry>
+          <material><ambient>0.20 0.20 0.21 1</ambient><diffuse>0.24 0.24 0.25 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="material_02_chip">
+      <static>true</static>
+      <pose>-0.1250 -0.1667 0.1060 0 0 0</pose>
+      <link name="disc">
+        <visual name="disc">
+          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <material>
+            <ambient>0.42 0.44 0.46 1</ambient>
+            <diffuse>0.50 0.52 0.54 1</diffuse>
+            <specular>0.0 0.0 0.0 1</specular>
+          </material>
+        </visual>
+        <visual name="defect_chip">
+          <pose>0.032 -0.020 0.00360 0 0 0</pose>
+          <geometry><box><size>0.024 0.022 0.0012</size></box></geometry>
+          <material><ambient>0.10 0.11 0.13 1</ambient><diffuse>0.14 0.15 0.17 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="material_03_stain">
+      <static>true</static>
+      <pose>0.1250 -0.1667 0.1060 0 0 0</pose>
+      <link name="disc">
+        <visual name="disc">
+          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <material>
+            <ambient>0.42 0.44 0.46 1</ambient>
+            <diffuse>0.50 0.52 0.54 1</diffuse>
+            <specular>0.0 0.0 0.0 1</specular>
+          </material>
+        </visual>
+        <visual name="defect_stain">
+          <pose>0.008 0.004 0.00320 0 0 0</pose>
+          <geometry><cylinder><radius>0.012</radius><length>0.0006</length></cylinder></geometry>
+          <material><ambient>0.16 0.13 0.10 1</ambient><diffuse>0.20 0.16 0.12 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="material_04_hole">
+      <static>true</static>
+      <pose>0.3750 -0.1667 0.1060 0 0 0</pose>
+      <link name="disc">
+        <visual name="disc">
+          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <material>
+            <ambient>0.42 0.44 0.46 1</ambient>
+            <diffuse>0.50 0.52 0.54 1</diffuse>
+            <specular>0.0 0.0 0.0 1</specular>
+          </material>
+        </visual>
+        <visual name="defect_hole">
+          <pose>-0.004 0.012 0.00320 0 0 0</pose>
+          <geometry><cylinder><radius>0.0055</radius><length>0.0006</length></cylinder></geometry>
+          <material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="material_05_stain">
+      <static>true</static>
+      <pose>-0.3750 0.0000 0.1060 0 0 0</pose>
+      <link name="disc">
+        <visual name="disc">
+          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <material>
+            <ambient>0.42 0.44 0.46 1</ambient>
+            <diffuse>0.50 0.52 0.54 1</diffuse>
+            <specular>0.0 0.0 0.0 1</specular>
+          </material>
+        </visual>
+        <visual name="defect_stain">
+          <pose>0.008 0.004 0.00320 0 0 0</pose>
+          <geometry><cylinder><radius>0.012</radius><length>0.0006</length></cylinder></geometry>
+          <material><ambient>0.16 0.13 0.10 1</ambient><diffuse>0.20 0.16 0.12 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="material_06_scratch">
+      <static>true</static>
+      <pose>-0.1250 0.0000 0.1060 0 0 0</pose>
+      <link name="disc">
+        <visual name="disc">
+          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <material>
+            <ambient>0.42 0.44 0.46 1</ambient>
+            <diffuse>0.50 0.52 0.54 1</diffuse>
+            <specular>0.0 0.0 0.0 1</specular>
+          </material>
+        </visual>
+        <visual name="defect_scratch">
+          <pose>0.004 -0.006 0.00340 0 0 0.436</pose>
+          <geometry><box><size>0.052 0.0025 0.0008</size></box></geometry>
+          <material><ambient>0.20 0.20 0.21 1</ambient><diffuse>0.24 0.24 0.25 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="material_07_hole">
+      <static>true</static>
+      <pose>0.1250 0.0000 0.1060 0 0 0</pose>
+      <link name="disc">
+        <visual name="disc">
+          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <material>
+            <ambient>0.42 0.44 0.46 1</ambient>
+            <diffuse>0.50 0.52 0.54 1</diffuse>
+            <specular>0.0 0.0 0.0 1</specular>
+          </material>
+        </visual>
+        <visual name="defect_hole">
+          <pose>-0.004 0.012 0.00320 0 0 0</pose>
+          <geometry><cylinder><radius>0.0055</radius><length>0.0006</length></cylinder></geometry>
+          <material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="material_08_chip">
+      <static>true</static>
+      <pose>0.3750 0.0000 0.1060 0 0 0</pose>
+      <link name="disc">
+        <visual name="disc">
+          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <material>
+            <ambient>0.42 0.44 0.46 1</ambient>
+            <diffuse>0.50 0.52 0.54 1</diffuse>
+            <specular>0.0 0.0 0.0 1</specular>
+          </material>
+        </visual>
+        <visual name="defect_chip">
+          <pose>0.032 -0.020 0.00360 0 0 0</pose>
+          <geometry><box><size>0.024 0.022 0.0012</size></box></geometry>
+          <material><ambient>0.10 0.11 0.13 1</ambient><diffuse>0.14 0.15 0.17 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="material_09_chip">
+      <static>true</static>
+      <pose>-0.3750 0.1667 0.1060 0 0 0</pose>
+      <link name="disc">
+        <visual name="disc">
+          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <material>
+            <ambient>0.42 0.44 0.46 1</ambient>
+            <diffuse>0.50 0.52 0.54 1</diffuse>
+            <specular>0.0 0.0 0.0 1</specular>
+          </material>
+        </visual>
+        <visual name="defect_chip">
+          <pose>0.032 -0.020 0.00360 0 0 0</pose>
+          <geometry><box><size>0.024 0.022 0.0012</size></box></geometry>
+          <material><ambient>0.10 0.11 0.13 1</ambient><diffuse>0.14 0.15 0.17 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="material_10_scratch">
+      <static>true</static>
+      <pose>-0.1250 0.1667 0.1060 0 0 0</pose>
+      <link name="disc">
+        <visual name="disc">
+          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <material>
+            <ambient>0.42 0.44 0.46 1</ambient>
+            <diffuse>0.50 0.52 0.54 1</diffuse>
+            <specular>0.0 0.0 0.0 1</specular>
+          </material>
+        </visual>
+        <visual name="defect_scratch">
+          <pose>0.004 -0.006 0.00340 0 0 0.436</pose>
+          <geometry><box><size>0.052 0.0025 0.0008</size></box></geometry>
+          <material><ambient>0.20 0.20 0.21 1</ambient><diffuse>0.24 0.24 0.25 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="material_11_stain">
+      <static>true</static>
+      <pose>0.1250 0.1667 0.1060 0 0 0</pose>
+      <link name="disc">
+        <visual name="disc">
+          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <material>
+            <ambient>0.42 0.44 0.46 1</ambient>
+            <diffuse>0.50 0.52 0.54 1</diffuse>
+            <specular>0.0 0.0 0.0 1</specular>
+          </material>
+        </visual>
+        <visual name="defect_stain">
+          <pose>0.008 0.004 0.00320 0 0 0</pose>
+          <geometry><cylinder><radius>0.012</radius><length>0.0006</length></cylinder></geometry>
+          <material><ambient>0.16 0.13 0.10 1</ambient><diffuse>0.20 0.16 0.12 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="material_12_hole">
+      <static>true</static>
+      <pose>0.3750 0.1667 0.1060 0 0 0</pose>
+      <link name="disc">
+        <visual name="disc">
+          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <material>
+            <ambient>0.42 0.44 0.46 1</ambient>
+            <diffuse>0.50 0.52 0.54 1</diffuse>
+            <specular>0.0 0.0 0.0 1</specular>
+          </material>
+        </visual>
+        <visual name="defect_hole">
+          <pose>-0.004 0.012 0.00320 0 0 0</pose>
+          <geometry><cylinder><radius>0.0055</radius><length>0.0006</length></cylinder></geometry>
+          <material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 三轴龙门（关节零位 = 相机在货架中心正上方、末端最高位） -->
+    <include>
+      <uri>model://aic_gantry</uri>
+      <name>aic_gantry</name>
+      <pose>0 0 0 0 0 0</pose>
+    </include>
+  </world>
+</sdf>

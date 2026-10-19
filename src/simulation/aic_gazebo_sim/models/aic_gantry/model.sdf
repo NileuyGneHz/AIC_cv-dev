@@ -1,0 +1,308 @@
+<?xml version="1.0" ?>
+<!--
+  三轴龙门（XYZ 门架式）仿真模型 —— AIC 视觉逻辑算法应用赛
+
+  结构：base（立柱+双 X 导轨）→ x_joint（横梁沿 X 移动）
+        → y_joint（小车沿 Y 移动）→ z_joint（Z 轴升降，末端工具+相机）
+  关节零位：相机位于货架中心正上方，末端处于最高位。
+
+  与 ROS 的接口（全部经 ros_gz_bridge，见 launch/sim.launch.py）：
+    /aic/joint/x/cmd_pos   std_msgs/Float64 → ignition.msgs.Double  （位置指令，m）
+    /aic/joint/y/cmd_pos
+    /aic/joint/z/cmd_pos   （负值 = 下降；范围见 limit）
+  反馈：
+    /world/aic_warehouse/model/aic_gantry/joint_state   ignition.msgs.Model → sensor_msgs/JointState
+  相机：
+    /camera/image, /camera/camera_info
+
+  改几何前先读 config/sim_layout.yaml：pick_z / travel_z 依赖这里的工具高度
+  （z_joint=0 时夹指底面 z=0.115 m，铁片顶面 z=0.109 m）。
+-->
+<sdf version="1.6">
+  <model name="aic_gantry">
+    <static>false</static>
+    <pose>0 0 0 0 0 0</pose>
+
+    <!-- ============================== base：固定于世界 ============================== -->
+    <link name="base">
+      <inertial>
+        <mass>120.0</mass>
+        <inertia>
+          <ixx>20</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>20</iyy><iyz>0</iyz><izz>20</izz>
+        </inertia>
+      </inertial>
+
+      <!-- 四根立柱 -->
+      <visual name="post_fl">
+        <pose>0.50 -0.30 0.30 0 0 0</pose>
+        <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
+        <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.34 0.35 0.37 1</diffuse>
+          <specular>0.1 0.1 0.1 1</specular></material>
+      </visual>
+      <visual name="post_fr">
+        <pose>0.50 0.30 0.30 0 0 0</pose>
+        <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
+        <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.34 0.35 0.37 1</diffuse></material>
+      </visual>
+      <visual name="post_bl">
+        <pose>-0.50 -0.30 0.30 0 0 0</pose>
+        <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
+        <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.34 0.35 0.37 1</diffuse></material>
+      </visual>
+      <visual name="post_br">
+        <pose>-0.50 0.30 0.30 0 0 0</pose>
+        <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
+        <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.34 0.35 0.37 1</diffuse></material>
+      </visual>
+
+      <!-- 两条 X 向导轨 -->
+      <visual name="rail_front">
+        <pose>0 -0.30 0.585 0 0 0</pose>
+        <geometry><box><size>1.10 0.05 0.05</size></box></geometry>
+        <material><ambient>0.55 0.57 0.60 1</ambient><diffuse>0.62 0.64 0.67 1</diffuse>
+          <specular>0.4 0.4 0.4 1</specular></material>
+      </visual>
+      <visual name="rail_back">
+        <pose>0 0.30 0.585 0 0 0</pose>
+        <geometry><box><size>1.10 0.05 0.05</size></box></geometry>
+        <material><ambient>0.55 0.57 0.60 1</ambient><diffuse>0.62 0.64 0.67 1</diffuse></material>
+      </visual>
+
+      <collision name="post_fl_col">
+        <pose>0.50 -0.30 0.30 0 0 0</pose>
+        <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
+      </collision>
+      <collision name="post_fr_col">
+        <pose>0.50 0.30 0.30 0 0 0</pose>
+        <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
+      </collision>
+      <collision name="post_bl_col">
+        <pose>-0.50 -0.30 0.30 0 0 0</pose>
+        <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
+      </collision>
+      <collision name="post_br_col">
+        <pose>-0.50 0.30 0.30 0 0 0</pose>
+        <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
+      </collision>
+    </link>
+
+    <!-- ============================== X 横梁 ============================== -->
+    <link name="x_carriage">
+      <pose>0 0 0.585 0 0 0</pose>
+      <inertial>
+        <mass>6.0</mass>
+        <inertia>
+          <ixx>0.5</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.25</iyy><iyz>0</iyz><izz>0.5</izz>
+        </inertia>
+      </inertial>
+      <visual name="beam">
+        <geometry><box><size>0.06 0.72 0.06</size></box></geometry>
+        <material><ambient>0.45 0.47 0.50 1</ambient><diffuse>0.52 0.54 0.57 1</diffuse></material>
+      </visual>
+      <visual name="gusset_l">
+        <pose>-0.10 0 0.06 0 0 0</pose>
+        <geometry><box><size>0.08 0.06 0.06</size></box></geometry>
+        <material><ambient>0.40 0.42 0.45 1</ambient><diffuse>0.46 0.48 0.51 1</diffuse></material>
+      </visual>
+      <visual name="gusset_r">
+        <pose>0.10 0 0.06 0 0 0</pose>
+        <geometry><box><size>0.08 0.06 0.06</size></box></geometry>
+        <material><ambient>0.40 0.42 0.45 1</ambient><diffuse>0.46 0.48 0.51 1</diffuse></material>
+      </visual>
+      <collision name="beam_col">
+        <geometry><box><size>0.06 0.72 0.06</size></box></geometry>
+      </collision>
+    </link>
+
+    <!-- ============================== Y 小车 ============================== -->
+    <link name="y_carriage">
+      <pose>0 0 0.545 0 0 0</pose>
+      <inertial>
+        <mass>3.0</mass>
+        <inertia>
+          <ixx>0.02</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.02</iyy><iyz>0</iyz><izz>0.02</izz>
+        </inertia>
+      </inertial>
+      <visual name="body">
+        <geometry><box><size>0.10 0.10 0.05</size></box></geometry>
+        <material><ambient>0.20 0.45 0.65 1</ambient><diffuse>0.24 0.52 0.74 1</diffuse></material>
+      </visual>
+      <collision name="body_col">
+        <geometry><box><size>0.10 0.10 0.05</size></box></geometry>
+      </collision>
+    </link>
+
+    <!-- ============================== Z 轴 + 末端工具 + 相机 ============================== -->
+    <link name="z_carriage">
+      <pose>0 0 0.545 0 0 0</pose>
+      <!-- 关掉重力：Z 是竖直轴，位置控制器是速度伺服，上电初始化阶段会先被重力
+           拉到下限再爬回来（实测直接卡在下限）。仿真阶段不需要 Z 轴的自由落体，
+           关掉重力后位置保持完全由控制器负责。恢复真实重力时要配制动/前馈。 -->
+      <gravity>false</gravity>
+      <inertial>
+        <mass>2.0</mass>
+        <inertia>
+          <ixx>0.03</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.03</iyy><iyz>0</iyz><izz>0.01</izz>
+        </inertia>
+      </inertial>
+
+      <!-- Z 向立柱（刻意偏到 -X 侧：让出相机光路，否则相机会埋在立柱实体里） -->
+      <visual name="rod">
+        <pose>-0.075 0 -0.20 0 0 0</pose>
+        <geometry><box><size>0.045 0.045 0.40</size></box></geometry>
+        <material><ambient>0.72 0.74 0.76 1</ambient><diffuse>0.80 0.82 0.84 1</diffuse>
+          <specular>0.6 0.6 0.6 1</specular></material>
+      </visual>
+
+      <!-- 工具法兰：两根横条（中间留出相机光路） -->
+      <visual name="flange_bar_a">
+        <pose>-0.010 -0.055 -0.41 0 0 0</pose>
+        <geometry><box><size>0.18 0.02 0.02</size></box></geometry>
+        <material><ambient>0.35 0.36 0.38 1</ambient><diffuse>0.40 0.41 0.43 1</diffuse></material>
+      </visual>
+      <visual name="flange_bar_b">
+        <pose>-0.010 0.055 -0.41 0 0 0</pose>
+        <geometry><box><size>0.18 0.02 0.02</size></box></geometry>
+        <material><ambient>0.35 0.36 0.38 1</ambient><diffuse>0.40 0.41 0.43 1</diffuse></material>
+      </visual>
+
+      <!-- 夹指（沿 X 开合；z_joint=0 时底面 z=0.115 m） -->
+      <visual name="finger_l">
+        <pose>-0.036 0 -0.395 0 0 0</pose>
+        <geometry><box><size>0.012 0.05 0.03</size></box></geometry>
+        <material><ambient>0.85 0.55 0.10 1</ambient><diffuse>0.92 0.62 0.12 1</diffuse></material>
+      </visual>
+      <visual name="finger_r">
+        <pose>0.036 0 -0.395 0 0 0</pose>
+        <geometry><box><size>0.012 0.05 0.03</size></box></geometry>
+        <material><ambient>0.85 0.55 0.10 1</ambient><diffuse>0.92 0.62 0.12 1</diffuse></material>
+      </visual>
+
+      <!-- 相机：朝下（rpy pitch=+90° 把相机 +X 光轴转成世界 -Z） -->
+      <sensor name="camera" type="camera">
+        <pose>0 0 -0.18 0 1.5708 -1.5708</pose>
+        <always_on>1</always_on>
+        <visualize>false</visualize>
+        <update_rate>20</update_rate>
+        <topic>/camera/image</topic>
+        <camera>
+          <horizontal_fov>1.047</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.005</near>
+            <far>4.0</far>
+          </clip>
+        </camera>
+      </sensor>
+    </link>
+
+    <!-- ============================== 关节 ============================== -->
+    <joint name="x_joint" type="prismatic">
+      <parent>base</parent>
+      <child>x_carriage</child>
+      <axis>
+        <xyz>1 0 0</xyz>
+        <limit>
+          <lower>-0.45</lower>
+          <upper>0.45</upper>
+          <effort>300</effort>
+          <velocity>0.35</velocity>
+        </limit>
+        <dynamics><damping>20</damping><spring_stiffness>0</spring_stiffness></dynamics>
+      </axis>
+    </joint>
+
+    <joint name="y_joint" type="prismatic">
+      <parent>x_carriage</parent>
+      <child>y_carriage</child>
+      <axis>
+        <xyz>0 1 0</xyz>
+        <limit>
+          <lower>-0.24</lower>
+          <upper>0.24</upper>
+          <effort>200</effort>
+          <velocity>0.30</velocity>
+        </limit>
+        <dynamics><damping>15</damping><spring_stiffness>0</spring_stiffness></dynamics>
+      </axis>
+    </joint>
+
+    <joint name="z_joint" type="prismatic">
+      <parent>y_carriage</parent>
+      <child>z_carriage</child>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit>
+          <lower>-0.42</lower>
+          <upper>0.0</upper>
+          <effort>200</effort>
+          <velocity>0.15</velocity>
+        </limit>
+        <dynamics><damping>15</damping><spring_stiffness>0</spring_stiffness></dynamics>
+      </axis>
+    </joint>
+
+    <!-- 门架底座固定在世界（否则整体受重力下落） -->
+    <joint name="world_fix" type="fixed">
+      <parent>world</parent>
+      <child>base</child>
+    </joint>
+
+    <!-- ============================== 位置控制插件 ============================== -->
+    <!-- 关节状态回传：/world/aic_warehouse/model/aic_gantry/joint_state（ignition.msgs.Model） -->
+    <plugin filename="ignition-gazebo-joint-state-publisher-system"
+            name="ignition::gazebo::systems::JointStatePublisher">
+      <joint_name>x_joint</joint_name>
+      <joint_name>y_joint</joint_name>
+      <joint_name>z_joint</joint_name>
+    </plugin>
+
+    <!-- 增益：p=20/d=0.6 时（初版）伺服极慢——375 mm 阶跃要 4.8 s 才追上、过冲 17.7 mm、
+         8.6 s 才停稳，导致控制侧「剖面走完就报到位」时实际差一格。实测 p=1600/d=200：
+         过冲 0.5 mm、约 1.9 s 进 ±1 mm。三轴质量不同（x 6 kg / y 3 kg / z 2 kg），
+         统一用这组偏硬的参数对三轴都稳定（z 另有 gravity=false）。 -->
+    <!-- joint_index 是「该关节内部的自由度序号」，不是模型里第几个关节：
+         三个关节都是单自由度，因此全部填 0。写成 0/1/2 时只有 x 能动，
+         y/z 会因为越界静默失效（踩过）。 -->
+    <plugin filename="ignition-gazebo-joint-position-controller-system"
+            name="ignition::gazebo::systems::JointPositionController">
+      <joint_name>x_joint</joint_name>
+      <joint_index>0</joint_index>
+      <initial_position>0.0</initial_position>
+      <topic>/aic/joint/x/cmd_pos</topic>
+      <p_gain>1600</p_gain>
+      <i_gain>0.0</i_gain>
+      <d_gain>200</d_gain>
+    </plugin>
+
+    <plugin filename="ignition-gazebo-joint-position-controller-system"
+            name="ignition::gazebo::systems::JointPositionController">
+      <joint_name>y_joint</joint_name>
+      <joint_index>0</joint_index>
+      <initial_position>0.0</initial_position>
+      <topic>/aic/joint/y/cmd_pos</topic>
+      <p_gain>1600</p_gain>
+      <i_gain>0.0</i_gain>
+      <d_gain>200</d_gain>
+    </plugin>
+
+    <plugin filename="ignition-gazebo-joint-position-controller-system"
+            name="ignition::gazebo::systems::JointPositionController">
+      <joint_name>z_joint</joint_name>
+      <joint_index>0</joint_index>
+      <initial_position>0.0</initial_position>
+      <topic>/aic/joint/z/cmd_pos</topic>
+      <p_gain>1600</p_gain>
+      <i_gain>0.0</i_gain>
+      <d_gain>200</d_gain>
+    </plugin>
+  </model>
+</sdf>

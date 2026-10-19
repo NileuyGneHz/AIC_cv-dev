@@ -140,6 +140,31 @@ int main(int argc, char ** argv)
   const double rate = tick_rate_hz > 1.0 ? tick_rate_hz : 1.0;
   const auto period = std::chrono::duration<double>(1.0 / rate);
 
+  // control 就绪握手（control_wait_ready=true 时生效）。
+  // 为什么必须有：GOTO 是 fire-and-forget，control 侧订阅尚未建立时消息直接丢，
+  // 表现就是「第 1 个位点必然 TIMEOUT」（仿真实测，见 docs/guides/simulation_guide.md）。
+  if (control_wait_ready) {
+    const double ready_timeout_s = node->declare_parameter<double>("control_ready_timeout_s", 10.0);
+    RCLCPP_INFO(
+      node->get_logger(), "[decision] 等待 control 就绪：订阅 '%s'（最多 %.1f s）",
+      control_ready_topic.c_str(), ready_timeout_s);
+    const auto t0 = std::chrono::steady_clock::now();
+    while (rclcpp::ok() && !g_stop && !ctx.control->ready()) {
+      const double waited =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+      if (waited > ready_timeout_s) {
+        RCLCPP_WARN(
+          node->get_logger(),
+          "[decision] control 未在 %.1f s 内就绪，直接开跑（首条 GOTO 可能丢）", ready_timeout_s);
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    if (ctx.control->ready()) {
+      RCLCPP_INFO(node->get_logger(), "[decision] control 已就绪，开始巡视");
+    }
+  }
+
   int runs = 0;
   int exit_code = 0;
   while (rclcpp::ok() && !g_stop) {
