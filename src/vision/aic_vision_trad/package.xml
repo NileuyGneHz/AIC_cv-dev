@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>aic_vision_trad</name>
+  <version>0.1.0</version>
+  <description>
+    AIC 视觉逻辑算法应用赛 · 传统视觉识别链路：盘面定位（凹槽 ROI 内圆拟合）+
+    四类缺陷判据（划痕 / 污渍 / 缺角 / 孔洞）。发布 /vision/material_type。
+  </description>
+  <maintainer email="saber2089467296@163.com">Nileuy</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>cv_bridge</exec_depend>
+  <exec_depend>python3-opencv</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
