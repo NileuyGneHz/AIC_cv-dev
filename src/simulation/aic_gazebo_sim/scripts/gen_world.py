@@ -14,7 +14,9 @@ sim_layout.yaml 的同一份数据，布局或类型分配一改，重跑本脚�
 这样渲染稳定、俯视相机一眼可分，也便于后续传统视觉做阈值/模板算法。
 """
 import argparse
+import math
 import os
+import random
 import sys
 
 import yaml
@@ -23,6 +25,18 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PKG = os.path.dirname(HERE)
 
 TYPE_NAMES = {1: "scratch", 2: "stain", 3: "chip", 4: "hole"}
+
+# 缺陷几何的随机范围（只在 materials.jitter_seed > 0 时生效）。
+# 尺寸是「相对 M2 整定值」的倍数，位置按下面的约束抽：
+#   盘内缺陷（划痕/污渍/孔洞）整体留在 roi_frac=0.93r 之内 —— 缺陷被掩膜切掉一半
+#   会让 frac 不可控（坑 18 的同类问题）；
+#   缺角（chip）必须压在盘缘，径向取 0.90~0.96r，否则视觉上就不是「缺角」。
+JITTER = {
+    1: {"len": (0.85, 1.15), "wid": (0.85, 1.20)},   # 划痕：长宽微变
+    2: {"radius": (0.85, 1.20)},                     # 污渍：斑半径微变
+    3: {"size": (0.85, 1.20)},                       # 缺角：缺口边长微变
+    4: {"radius": (0.85, 1.20)},                     # 孔洞：孔径微变
+}
 
 HEADER = """<?xml version="1.0" ?>
 <!--
@@ -278,7 +292,83 @@ def place_table(layout):
     return "".join(out)
 
 
-def plate_model(layout, slot, mtype):
+def defect_rng(layout, slot_id, seed=None):
+    """每块铁片一个独立随机流：同一 (seed, slot_id) 必然抽出同一组几何。
+
+    用 seed*1000+slot_id 而不是一路顺次抽，是为了改某一块的形状时不影响
+    其它库位的随机序列（做对照实验时能只换一个变量）。
+    seed=None 时读 sim_layout.yaml 的 materials.jitter_seed；0 表示关闭。
+    """
+    if seed is None:
+        seed = int((layout.get("materials") or {}).get("jitter_seed", 0) or 0)
+    if not seed:
+        return None
+    return random.Random(int(seed) * 1000 + int(slot_id))
+
+
+def defect_visual(mtype, r, d, rng):
+    """返回缺陷可视的 (name, pose 串, geometry 片段, material 片段)。
+
+    rng=None 时走 M2 的固定几何。格式精度按原值对齐（0.004 / 0.436 / 0.0025 …），
+    因此关掉随机化后生成物与 M2 逐字节一致 —— 这条本身就是回归检查。
+    """
+    if mtype == 1:          # 划痕：细长薄条，绕 Z 任意朝向
+        if rng is None:
+            cx, cy, yaw, ln, wd = 0.004, -0.006, math.radians(25.0), 0.052, 0.0025
+        else:
+            ln = 0.052 * rng.uniform(*JITTER[1]["len"])
+            wd = 0.0025 * rng.uniform(*JITTER[1]["wid"])
+            lim = max(0.0, 0.93 * r - ln / 2.0)      # 整条划痕留在判据域内
+            ang = rng.uniform(0.0, 2.0 * math.pi)
+            rad = rng.uniform(0.0, lim)
+            cx, cy, yaw = rad * math.cos(ang), rad * math.sin(ang), rng.uniform(-math.pi, math.pi)
+        return ("defect_scratch",
+                "{:.3f} {:.3f} {:.5f} 0 0 {:.3f}".format(cx, cy, d + 0.0004, yaw),
+                "<box><size>{:.3f} {:.4f} 0.0008</size></box>".format(ln, wd),
+                "<ambient>0.20 0.20 0.21 1</ambient><diffuse>0.24 0.24 0.25 1</diffuse>")
+    if mtype == 2:          # 污渍：扁圆深色斑
+        if rng is None:
+            cx, cy, rad2 = 0.008, 0.004, 0.012
+        else:
+            rad2 = 0.012 * rng.uniform(*JITTER[2]["radius"])
+            lim = max(0.0, 0.93 * r - rad2)
+            ang = rng.uniform(0.0, 2.0 * math.pi)
+            rad = rng.uniform(0.0, lim)
+            cx, cy = rad * math.cos(ang), rad * math.sin(ang)
+        return ("defect_stain",
+                "{:.3f} {:.3f} {:.5f} 0 0 0".format(cx, cy, d + 0.0002),
+                "<cylinder><radius>{:.3f}</radius><length>0.0006</length></cylinder>".format(rad2),
+                "<ambient>0.16 0.13 0.10 1</ambient><diffuse>0.20 0.16 0.12 1</diffuse>")
+    if mtype == 3:          # 缺角：压在盘缘的深色方块（视觉上像被咬掉）
+        if rng is None:
+            cx, cy, sa, sb = 0.032, -0.020, 0.024, 0.022
+        else:
+            u = rng.uniform(*JITTER[3]["size"])
+            sa, sb = 0.024 * u, 0.022 * u
+            # 径向必须落在 0.90~0.96r：往里挪就不是缺角，往外挪整块掉出盘外
+            rad = rng.uniform(0.90, 0.96) * r
+            ang = rng.uniform(0.0, 2.0 * math.pi)
+            cx, cy = rad * math.cos(ang), rad * math.sin(ang)
+        return ("defect_chip",
+                "{:.3f} {:.3f} {:.5f} 0 0 0".format(cx, cy, d + 0.0006),
+                "<box><size>{:.3f} {:.3f} 0.0012</size></box>".format(sa, sb),
+                "<ambient>0.10 0.11 0.13 1</ambient><diffuse>0.14 0.15 0.17 1</diffuse>")
+    # 孔洞：小深色圆
+    if rng is None:
+        cx, cy, rad4 = -0.004, 0.012, 0.0055
+    else:
+        rad4 = 0.0055 * rng.uniform(*JITTER[4]["radius"])
+        lim = max(0.0, 0.93 * r - rad4)
+        ang = rng.uniform(0.0, 2.0 * math.pi)
+        rad = rng.uniform(0.0, lim)
+        cx, cy = rad * math.cos(ang), rad * math.sin(ang)
+    return ("defect_hole",
+            "{:.3f} {:.3f} {:.5f} 0 0 0".format(cx, cy, d + 0.0002),
+            "<cylinder><radius>{:.4f}</radius><length>0.0006</length></cylinder>".format(rad4),
+            "<ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse>")
+
+
+def plate_model(layout, slot, mtype, jitter_seed=None):
     """一块圆形铁片 + 该类缺陷的几何表达。
 
     动态模型（有质量/碰撞/摩擦）：HANDLE 时由 DetachableJoint 吸附到 z_carriage，
@@ -325,38 +415,14 @@ def plate_model(layout, slot, mtype):
     ]
 
     ind = "        "
-    if mtype == 1:          # 划痕：细长薄条，绕 Z 斜置
-        out.append(
-            ind + '<visual name="defect_scratch">\n'
-            + ind + "  <pose>0.004 -0.006 {:.5f} 0 0 0.436</pose>\n".format(d + 0.0004)
-            + ind + "  <geometry><box><size>0.052 0.0025 0.0008</size></box></geometry>\n"
-            + ind + "  <material><ambient>0.20 0.20 0.21 1</ambient>"
-                     "<diffuse>0.24 0.24 0.25 1</diffuse></material>\n"
-            + ind + "</visual>\n")
-    elif mtype == 2:        # 污渍：扁圆深色斑
-        out.append(
-            ind + '<visual name="defect_stain">\n'
-            + ind + "  <pose>0.008 0.004 {:.5f} 0 0 0</pose>\n".format(d + 0.0002)
-            + ind + "  <geometry><cylinder><radius>0.012</radius><length>0.0006</length></cylinder></geometry>\n"
-            + ind + "  <material><ambient>0.16 0.13 0.10 1</ambient>"
-                     "<diffuse>0.20 0.16 0.12 1</diffuse></material>\n"
-            + ind + "</visual>\n")
-    elif mtype == 3:        # 缺角：边缘覆盖一块与地贴同色的方块（视觉上像被咬掉）
-        out.append(
-            ind + '<visual name="defect_chip">\n'
-            + ind + "  <pose>0.032 -0.020 {:.5f} 0 0 0</pose>\n".format(d + 0.0006)
-            + ind + "  <geometry><box><size>0.024 0.022 0.0012</size></box></geometry>\n"
-            + ind + "  <material><ambient>0.10 0.11 0.13 1</ambient>"
-                     "<diffuse>0.14 0.15 0.17 1</diffuse></material>\n"
-            + ind + "</visual>\n")
-    else:                   # 孔洞：小深色圆
-        out.append(
-            ind + '<visual name="defect_hole">\n'
-            + ind + "  <pose>-0.004 0.012 {:.5f} 0 0 0</pose>\n".format(d + 0.0002)
-            + ind + "  <geometry><cylinder><radius>0.0055</radius><length>0.0006</length></cylinder></geometry>\n"
-            + ind + "  <material><ambient>0.03 0.03 0.03 1</ambient>"
-                     "<diffuse>0.05 0.05 0.05 1</diffuse></material>\n"
-            + ind + "</visual>\n")
+    rng = defect_rng(layout, slot["id"], jitter_seed)
+    vname, vpose, vgeo, vmat = defect_visual(mtype, r, d, rng)
+    out.append(
+        ind + '<visual name="{}">\n'.format(vname)
+        + ind + "  <pose>{}</pose>\n".format(vpose)
+        + ind + "  <geometry>{}</geometry>\n".format(vgeo)
+        + ind + "  <material>{}</material>\n".format(vmat)
+        + ind + "</visual>\n")
 
     out.append("      </link>\n")
     out.append("    </model>\n\n")
@@ -400,14 +466,14 @@ def gantry_model(layout, types, slots):
     return "\n".join("  " + ln if ln.strip() else ln for ln in block.splitlines()) + "\n\n"
 
 
-def build_sdf(layout):
+def build_sdf(layout, seed=None):
     slots = slot_centers(layout)
     types = material_types(layout, len(slots))
 
     out = [HEADER, rack_model(layout), place_table(layout)]
     out.append("    <!-- ===== 12 块圆形铁片（动态；类型见 sim_layout.yaml materials.types）===== -->\n")
     for s, t in zip(slots, types):
-        out.append(plate_model(layout, s, t))
+        out.append(plate_model(layout, s, t, seed))
 
     out.append("  <!-- 三轴龙门（关节零位 = 相机在货架中心正上方、末端最高位） -->\n")
     out.append(gantry_model(layout, types, slots))
@@ -419,16 +485,20 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="生成 aic_warehouse.sdf")
     ap.add_argument("--layout", default=os.path.join(PKG, "config", "sim_layout.yaml"))
     ap.add_argument("--out", default=os.path.join(PKG, "worlds", "aic_warehouse.sdf"))
+    ap.add_argument("--seed", type=int, default=None,
+                    help="缺陷几何随机化种子；不给则读 materials.jitter_seed，0=关闭")
     args = ap.parse_args(argv)
 
     with open(args.layout, "r", encoding="utf-8") as f:
         layout = yaml.safe_load(f)
 
-    sdf, types = build_sdf(layout)
+    sdf, types = build_sdf(layout, args.seed)
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as f:
         f.write(sdf)
-    print("[gen_world] 已生成 {}（{} 字节）".format(args.out, len(sdf)))
+    seed = args.seed if args.seed is not None else int(
+        (layout.get("materials") or {}).get("jitter_seed", 0) or 0)
+    print("[gen_world] 已生成 {}（{} 字节，jitter_seed={}）".format(args.out, len(sdf), seed))
     print("[gen_world] 12 库位类型（slot 1..12）：{}".format(list(types)))
     return 0
 

@@ -15,6 +15,7 @@
 与判据（环在盘缘外侧），但**不要**把它当成"干净样本"去做阈值标定。
 """
 import argparse
+import csv
 import glob
 import os
 import sys
@@ -72,7 +73,7 @@ def feature_text(res):
             "elong %.1f   drop %.0f" % (c["elong"], c["drop"]))
 
 
-def build(frames_dir, out_path, per_type=COLS):
+def build(frames_dir, out_path, per_type=COLS, feat_csv=""):
     frames = pick_frames(frames_dir, per_type)
     if not frames:
         print("在 %s 下没有找到 vision_*.png，先跑 "
@@ -88,6 +89,7 @@ def build(frames_dir, out_path, per_type=COLS):
                 % per_type, (12, 27), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (235, 235, 235), 1)
 
     ok, bad = 0, 0
+    rows = []
     for row, tid in enumerate(sorted(frames)):
         y0 = HEAD_H + row * (TILE_H + CAP_H)
         for col, path in enumerate(frames[tid]):
@@ -101,6 +103,8 @@ def build(frames_dir, out_path, per_type=COLS):
                 img = img[28:, :]
             res = detect(img, DetectorParams())
             vis = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+            rec = {"frame": os.path.basename(path), "gt": tid, "pred": "", "r": "",
+                   "refined": "", "frac": "", "circ": "", "rad": "", "elong": "", "drop": ""}
             if res is not None:
                 vis = annotate(vis, res, tid)
                 pred, why = classify(res["comps"])   # (type_id, 判据理由)
@@ -108,11 +112,19 @@ def build(frames_dir, out_path, per_type=COLS):
                 tint = (0, 220, 0) if pred == tid else (0, 0, 255)
                 ok += pred == tid
                 bad += pred != tid
+                rec.update({"pred": pred, "r": round(res["plate"]["r"], 2),
+                            "refined": int(bool(res["plate"].get("refined")))})
+                if res["comps"]:
+                    c = max(res["comps"], key=lambda d: d["area"])
+                    rec.update({"frac": round(c["frac"], 4), "circ": round(c["circ"], 3),
+                                "rad": round(c["rad"], 3), "elong": round(c["elong"], 2),
+                                "drop": round(c["drop"], 1)})
             else:
                 pred, why = None, "plate not found"
                 line1, line2 = why, ""
                 tint = (0, 0, 255)
                 bad += 1
+            rows.append(rec)
             vis = cv2.resize(vis, (TILE_W, TILE_H), interpolation=cv2.INTER_AREA)
             canvas[y0:y0 + TILE_H, x0:x0 + TILE_W] = vis
             # 分隔线 + 三行说明（英文，cv2 不支持中文字形，中文见文档表格）
@@ -129,6 +141,14 @@ def build(frames_dir, out_path, per_type=COLS):
 
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     cv2.imwrite(out_path, canvas)
+    if feat_csv:
+        os.makedirs(os.path.dirname(feat_csv) or ".", exist_ok=True)
+        with open(feat_csv, "w", encoding="utf-8", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=["frame", "gt", "pred", "r", "refined",
+                                              "frac", "circ", "rad", "elong", "drop"])
+            w.writeheader()
+            w.writerows(rows)
+        print("特征表：%s（%d 行）" % (feat_csv, len(rows)))
     print("图版：%s（%d 张，命中 %d，误判 %d）" % (out_path, ok + bad, ok, bad))
     return 0 if bad == 0 else 1
 
@@ -138,8 +158,10 @@ def main():
     ap.add_argument("--frames", default="logs/m2_debug", help="标注帧目录")
     ap.add_argument("--out", default="docs/guides/assets/vision_atlas.png")
     ap.add_argument("--per-type", type=int, default=COLS, help="每类取几张（默认 3）")
+    ap.add_argument("--features-csv", default="",
+                    help="把每张图的判据特征写成 CSV（用于统计各类分布/余量）")
     args = ap.parse_args()
-    return build(args.frames, args.out, args.per_type)
+    return build(args.frames, args.out, args.per_type, args.features_csv)
 
 
 if __name__ == "__main__":

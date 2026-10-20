@@ -38,6 +38,8 @@ ros2 run aic_gazebo_sim sim_snapshot.py --ros-args -p out_dir:=logs/snap -p coun
 
 改布局或缺陷类型的分配：改 `config/sim_layout.yaml` → 重跑 `scripts/gen_world.py` → 重启仿真。
 世界文件是生成物（`worlds/aic_warehouse.sdf`），不要手改。
+缺陷几何默认固定；做泛化检验用 `gen_world.py --seed N`（或改 `materials.jitter_seed`），
+再 `./scripts/verify_sim_robust.sh 1 2 3 4 5` 多种子跑一轮，见 `docs/guides/simulation_guide.md` §4.2。
 
 ## 话题（全部经 ros_gz_bridge 转 ROS 2）
 

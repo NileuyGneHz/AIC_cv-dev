@@ -23,11 +23,13 @@ fi
 
 VISION="trad"
 LIMIT=240
+DEBUG_DIR=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --vision) VISION="$2"; shift 2 ;;
     --timeout) LIMIT="$2"; shift 2 ;;
-    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+    --debug-dir) DEBUG_DIR="$2"; shift 2 ;;
+    -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
     *) echo "[verify] 未知参数：$1" >&2; exit 2 ;;
   esac
 done
@@ -58,10 +60,16 @@ print(len(yaml.safe_load(open('src/simulation/aic_gazebo_sim/config/sim_layout.y
 
 echo "[verify] vision=${VISION} 位点数=${N_SLOTS} 结果 CSV=${CSV}"
 
+EXTRA_ARGS=()
+if [[ -n "${DEBUG_DIR}" ]]; then
+  mkdir -p "${DEBUG_DIR}"
+  EXTRA_ARGS+=("vision_debug_dir:=${DEBUG_DIR}")
+fi
+
 ros2 launch aic_gazebo_sim sim_decision.launch.py \
   once:=false \
   vision_backend:="${VISION}" \
-  results_csv:="${CSV}" > "${LOG}" 2>&1 &
+  results_csv:="${CSV}" "${EXTRA_ARGS[@]}" > "${LOG}" 2>&1 &
 LAUNCH_PID=$!
 
 cleanup() {
@@ -86,7 +94,17 @@ for ((t = 0; t < LIMIT; t++)); do
 done
 
 sleep 3
-timeout 10 ign topic -e -t /world/aic_warehouse/pose/info -n 1 > "${POSE}" 2>&1 || true
+# 坑：ign topic -e -n 1 偶尔一条也收不到（传输发现慢 / 上一条订阅还没清干净），
+#     单次失败会让整轮结论作废（表现为「pose/info 里只有 0 块铁片」）。
+#     抓 3 次，谁先拿到非空就用谁。
+for attempt in 1 2 3; do
+  timeout 20 ign topic -e -t /world/aic_warehouse/pose/info -n 1 > "${POSE}" 2>&1 || true
+  if grep -q 'material_' "${POSE}" 2>/dev/null; then
+    break
+  fi
+  echo "[verify] 位姿转储为空，重试 ${attempt}/3"
+  sleep 2
+done
 
 echo "[verify] 断言 -----------------------------------------------------------------"
 /usr/bin/python3 scripts/check_sim_m2.py \
