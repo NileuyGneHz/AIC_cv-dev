@@ -1,9 +1,10 @@
 # AIC 仓储仿真使用手册（aic_gazebo_sim）
 
-> 版本：2026-10-20 · 适用于 M2（抓取 / 码放闭环）当前代码状态
+> 版本：2026-10-20 · 适用于 **M3**（置物台上料 → 固定相机识别 → 吸盘取料 → 货架 4 列 × 3 层）
 > 定位：这是**操作手册**——装环境、构建、跑仿真、自验、配置、排障，按需查节。
-> 原理与全部 23 个坑的来龙去脉见 `simulation_guide.md`；接口契约细节见
+> 原理与全部 27 个坑的来龙去脉见 `simulation_guide.md`；接口契约细节见
 > `decision_control_interface.md` / `decision_vision_interface.md`。
+> **要录汇报/参赛视频**：直接看 `obs_recording_playbook.md`（录制前清单、OBS 参数、逐段旁白）。
 > 环境：Ubuntu 22.04 + ROS 2 Humble + Ignition Gazebo 6.18（Fortress）+ ros_gz_bridge
 
 ## 1. 系统一句话
@@ -66,13 +67,13 @@ cd ~/AIC_cv-dev
 
 | 你想确认的成果 | 命令 | 通过标准 | 耗时 |
 |---|---|---|---|
-| 链路通不通（决策→控制→仿真闭环） | `./scripts/run_sim.sh` | 结果 CSV 12 行全 OK | ≈40 s |
-| **端到端完整成果**（真视觉识别 + 物理抓放 + 落位） | `./scripts/verify_sim_m2.sh` | **PASS**（三组断言全过） | ≈100 s |
-| 四类缺陷识别都对 | 同上 + 看 CSV 类型列 vs 真值 | 逐位一致（按 slot_id 对） | ≈100 s |
+| 链路通不通（决策→控制→仿真闭环） | `./scripts/run_sim.sh` | 结果 CSV 12 行全 OK | ≈110 s（gt 桩） |
+| **端到端完整成果**（真视觉识别 + 物理抓放 + 落位） | `./scripts/verify_sim_m2.sh` | **PASS**（三组断言全过） | ≈160 s |
+| 四类缺陷识别都对 | 同上 + 看 CSV 类型列 vs 真值 | 逐位一致（按 slot_id 对） | ≈160 s |
 | 识别对随机几何也稳（泛化） | `./scripts/verify_sim_robust.sh` | 汇总表 0 误判 | ≈7 min |
-| TIMEOUT 兜底不崩 | `./scripts/run_sim.sh --drop-rate 0.6` | 巡视走完 12 位点、无 FAILURE | ≈75 s |
-| 边看画面边确认（判分绿/红 + 抓取过程 + 自由机位） | `ros2 launch aic_dashboard dashboard.launch.py vision_backend:=trad` | 浏览器 `127.0.0.1:8080`：12 格全绿、态势图 12 块全落码放格 | ≈95 s |
-| 识别失败现场证据 | `./scripts/run_sim.sh --vision trad --debug-dir logs/dbg` | `logs/dbg/vision_fail_*.png`（无 = 没判错过） | ≈85 s |
+| TIMEOUT 兜底不崩 | `./scripts/run_sim.sh --drop-rate 0.6` | 巡视走完 12 位点、无 FAILURE | ≈120 s（M3 未重测） |
+| 边看画面边确认（判分绿/红 + 抓取过程 + 自由机位） | `ros2 launch aic_dashboard dashboard.launch.py vision_backend:=trad` | 浏览器 `127.0.0.1:8080`：12 格全绿、态势图 12 块落对应层位 | ≈150 s |
+| 识别失败现场证据 | `./scripts/run_sim.sh --vision trad --debug-dir logs/dbg` | `logs/dbg/vision_fail_*.png`（无 = 没判错过） | ≈150 s |
 
 ## 5. 运行模式：run_sim.sh 全参数
 
@@ -81,7 +82,7 @@ cd ~/AIC_cv-dev
 | 选项 | 默认 | 作用 |
 |---|---|---|
 | `--gui` | 关 | 带 Gazebo GUI 观察窗口（录像/演示用；无头跑也能出相机图，EGL 渲染） |
-| `--loop` | 单轮 | 常驻多轮（`once:=false` + `auto_restart:=true`，决策一轮结束自动重开），Ctrl-C 结束。**注意**：M2 会把铁片物理搬走，第二轮货架是空的——真视觉下全 TIMEOUT 是正确行为，不是故障；常驻多轮只用于 gt 桩调决策。看板会在新一轮开始时自动清盘 |
+| `--loop` | 单轮 | 常驻多轮（`once:=false` + `auto_restart:=true`，决策一轮结束自动重开），Ctrl-C 结束。**注意**：M3 的物料是「按库位号」从供料管取的，第二轮会把已放进货架的物料重新传送回置物台（等于把布局打乱重来）——真视觉结果不可作数。**只用于 gt 桩调决策 / 看板连拍演示，录像必须单轮。** 看板会在新一轮开始时自动清盘 |
 | `--vision gt\|trad` | `gt` | 视觉后端：`gt`=真值桩（按布局表秒回类型）；`trad`=真视觉（读相机图识别） |
 | `--drop-rate 0.6` | 0.0 | 注入 60% 位点「识别失败」（视觉不回结果 → 决策记 TIMEOUT，巡视继续） |
 | `--invalid-rate 0.3` | 0.0 | 注入 30% 位点返回非法值 `"9"`（决策丢弃并计数） |
@@ -161,7 +162,7 @@ materials:
 `jitter_seed: 0` 时生成物与基线**逐字节一致**（回归证据）；设为 N 后按 `(N, slot_id)`
 给每块铁片重抽朝向 / 盘内位置 / 尺寸（0.85–1.20×），**类型不变**（视觉真值不受影响）。
 
-一键多种子回归（每个种子约 85–95 s，结束自动恢复基线世界）：
+一键多种子回归（每个种子约 150–170 s，结束自动恢复基线世界）：
 
 ```bash
 ./scripts/verify_sim_robust.sh                 # 默认 seed 1 2 3 4
@@ -177,8 +178,8 @@ materials:
 
 | 命令 | 干什么 | 耗时 |
 |---|---|---|
-| `./scripts/verify_sim_m2.sh` | **主自验**：真视觉整轮 + 三组断言（见下） | ≈100 s |
-| `./scripts/verify_sim_m2.sh --vision gt` | 真值桩版（把「视觉判错」与「控制/物理问题」分开） | ≈100 s |
+| `./scripts/verify_sim_m2.sh` | **主自验**：真视觉整轮 + 三组断言（见下） | ≈160 s |
+| `./scripts/verify_sim_m2.sh --vision gt` | 真值桩版（把「视觉判错」与「控制/物理问题」分开） | ≈110 s |
 | `./scripts/verify_sim_m2.sh --timeout 300` | 机器慢时放宽等待上限 | — |
 | `./scripts/verify_sim_robust.sh` | 多种子随机几何回归（§7） | ≈7 min |
 | `./scripts/verify_decision_loop.sh` | 纯决策闭环回归（A/B 两场景，不动仿真） | 快 |
@@ -190,6 +191,21 @@ materials:
 | A 决策结果 | 12 行全 OK；按 `slot_id` 查 `materials.types` 类型逐位一致 |
 | B 夹持闭环 | 日志「夹持」「释放」各 12 条（attach/detach 必须成对，只数 attach 会漏） |
 | C 物理落位 | 12 块铁片落在对应类型格心 ±4 mm、z 在台面高度（叠放 z +6 mm/块） |
+
+**全过程抓帧**（做汇报/技术文档配图，或与录像并行留素材）：
+
+```bash
+# 单独起（与仿真并行即可，只订阅不发布；跑完最后一轮自动退出）
+ros2 run aic_gazebo_sim capture_storyboard.py \
+    --ros-args -p out_dir:=logs/storyboard -p detail_slots:="1,2,6,12"
+
+# 拼成手册用的 3x4 图版
+/usr/bin/python3 docs/guides/gen_storyboard.py logs/storyboard docs/guides/assets/storyboard.png
+```
+
+产物：`<out_dir>/NN_<轮次>_<阶段>.png` + `storyboard.txt`（时间索引）。
+机位默认正俯视（`0,0.02,1.55,0,1.5708,1.5708`，能看到供料管 / 置物台 / 货架全貌），
+用 `-p scene_pose:="x,y,z,roll,pitch,yaw"` 可换机位。
 
 离线工具：
 
@@ -210,6 +226,7 @@ materials:
 | `logs/verify_m2_<stamp>.{csv,log}` + `logs/verify_m2_pose_<stamp>.txt` | 自验三件套（pose 文本供落位核对） |
 | `logs/<debug-dir>/vision_*.png` | 真视觉标注帧；`vision_fail_*` 是失败帧（判错现场证据） |
 | `logs/robust_<stamp>/` | 多种子回归逐种子产物 |
+| `logs/storyboard/` | 全过程分镜帧（`NN_轮次_阶段.png`）+ `storyboard.txt` 时间索引 |
 
 **结果表判读两条铁律**：
 
@@ -300,23 +317,26 @@ ros2 launch aic_dashboard dashboard.launch.py vision_backend:=trad
 
 1. **起跑前检查**：`pgrep -af gzserver` 确认无残留实例；隔离场景用 `--domain auto`。
 2. **一键带看板跑**：`ros2 launch aic_dashboard dashboard.launch.py vision_backend:=trad gui:=true`
-   （真视觉 12/12 单轮约 85 s + `shutdown_grace_s` 12 s 收尾）。
+   （真视觉 12/12 单轮约 145 s + `shutdown_grace_s` 12 s 收尾）。
 3. **录制**：OBS 录浏览器看板窗口（或加仿真 GUI 窗口双源合成）。
 4. **结果定格**：结果 CSV + `pose/info` 落位核对（`logs/verify_m2_pose_*.txt` 的读法见
    `check_sim_m2.py`）作为「清晰反映比赛结果」的证据帧。
 5. **排障红线**：录制全程不得改任何脚本；少放一块料（坑 19）按作弊级事故对待——
    录完先数日志里「夹持」「释放」是否各 12。
 
-## 13. 已验证基线（2026-10-20，M2）
+## 13. 已验证基线（2026-10-20，M3）
 
 | 项 | 结果 |
 |---|---|
-| 真视觉 + 完整搬运 | OK 12 / TIMEOUT 0，四类全对，单点 6.3 s，整轮 ≈85 s |
-| 落位 | 12 块全部落到对应类型格（x 差 0.8 mm，z 0.103/0.109/0.115 = 叠放 6 mm/块） |
+| 真视觉 + 完整搬运 | **OK 12 / TIMEOUT 0**，四类全对，整轮 **≈145 s**（12 轮，含上料与搬运） |
+| 落位 | 12 块落对应类型列、按 L1→L3 逐层填满；x/y 落位误差 **0.0 mm** |
 | 夹持闭环 | attach 12 / detach 12 成对，0 次到位超时 |
-| 真值桩 | OK 12 / TIMEOUT 0，单点 3.03 s |
-| drop_rate=0.6 | OK 4 / TIMEOUT 8，巡视不中断、无 FAILURE（平均单点 9.1 s） |
-| 随机几何回归 | seed 1–5 共 60 位点 0 误判 |
-| 到位精度 | 反馈闭环判定，稳态误差 0.0–1.2 mm |
+| 视觉窗口 | `vision_timeout_s=30.0`（覆盖最坏队列时延 HANDLE 12.8 s + GOTO 2.5 s） |
+| 抓帧分镜 | 单轮 23 帧，12 个阶段全覆盖（`logs/storyboard2/storyboard.txt`） |
+| 看板终态 | 12 ok / 12 placed / 0 recycled |
+| 三组断言 | `check_sim_m2.py` PASS（决策结果 / 夹持闭环 / 物理落位） |
+
+> M2 时期的历史数据（真值桩单点 3.03 s、drop_rate=0.6 的 4/8、seed 1–5 共 60 位点 0 误判）
+> 尚未在 M3 几何下重测，引用时注明来源版本。
 
 已知边界（未做）：GUI 摆位工具、视觉阈值向实拍迁移、每型多格位（真机料框排布确认后再改）、真实夹爪开合。
