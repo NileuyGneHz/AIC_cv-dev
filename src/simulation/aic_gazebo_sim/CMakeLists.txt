@@ -14,6 +14,7 @@ install(PROGRAMS
   scripts/sim_vision_node.py
   scripts/sim_snapshot.py
   scripts/gen_world.py
+  scripts/capture_storyboard.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
