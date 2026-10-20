@@ -60,6 +60,18 @@ print(len(yaml.safe_load(open('src/simulation/aic_gazebo_sim/config/sim_layout.y
 
 echo "[verify] vision=${VISION} 位点数=${N_SLOTS} 结果 CSV=${CSV}"
 
+# 起跑前检查：两个仿真共用一个 ROS domain 会互相污染（真值桩秒回类型、夹放对不上），
+# 现象极像「视觉退化」。这里**不替用户杀进程**（同一台机器上可能还有别的窗口在跑），
+# 只报告并退出，让人自己决定。
+if pgrep -f 'aic_gazebo_sim/lib/aic_gazebo_sim' >/dev/null 2>&1 \
+   || pgrep -f 'aic_vision_trad/lib/aic_vision_trad' >/dev/null 2>&1 \
+   || pgrep -f 'aic_behavior_tree/lib/aic_behavior_tree' >/dev/null 2>&1; then
+  echo "[verify] 已有仿真节点在跑（另一个窗口 / 上一轮没退干净）。" >&2
+  echo "[verify] 两个仿真共用 ROS domain 会让结果整片错位，先确认它停了再跑。" >&2
+  echo "[verify] 确认可以清理时：pkill -f aic_gazebo_sim/lib/aic_gazebo_sim 等三条（见文档）" >&2
+  exit 3
+fi
+
 EXTRA_ARGS=()
 if [[ -n "${DEBUG_DIR}" ]]; then
   mkdir -p "${DEBUG_DIR}"
@@ -72,11 +84,22 @@ ros2 launch aic_gazebo_sim sim_decision.launch.py \
   results_csv:="${CSV}" "${EXTRA_ARGS[@]}" > "${LOG}" 2>&1 &
 LAUNCH_PID=$!
 
+# 只清自己这一棵进程树，不用全局 pkill —— 同机可能有别人的仿真在跑。
+# 坑：只 kill launch 本身不够，子节点（gantry_controller / vision_node / bt_runner /
+#     gzserver / 桥）会变成孤儿继续发消息，下一轮就被它们污染。
+kill_tree() {
+  local pid="$1" child
+  for child in $(pgrep -P "${pid}" 2>/dev/null); do
+    kill_tree "${child}"
+  done
+  kill -TERM "${pid}" 2>/dev/null
+}
 cleanup() {
   kill -INT "${LAUNCH_PID}" 2>/dev/null
-  sleep 3
-  pkill -f gzserver 2>/dev/null
-  pkill -f parameter_bridge 2>/dev/null
+  sleep 2
+  pgrep -P "${LAUNCH_PID}" >/dev/null 2>&1 && kill_tree "${LAUNCH_PID}"
+  sleep 1
+  kill -KILL "${LAUNCH_PID}" 2>/dev/null
 }
 trap cleanup EXIT
 
