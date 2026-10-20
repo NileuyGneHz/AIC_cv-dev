@@ -431,6 +431,21 @@ ros2 launch aic_gazebo_sim sim_decision.launch.py invalid_rate:=0.3
     （即确属关停）时吞掉并打一行「正常收敛」；运行期同类异常仍会抛出，不掩盖真问题。
     判断是否同类：看 traceback 是否紧跟在 `signal_handler(SIGINT/SIGTERM)` 之后。
 
+28. **层位占用与「已取走」标记必须在生成步骤时提交，不能等执行到 detach**
+    （2026-10-20，一次"看起来更严谨"的重构引入的回归）。
+    决策是 fire-and-forget：`DispatchMaterialTask action=HANDLE` 之后立刻
+    `RecordSlotResult result=OK`，**不等 `handle_done`** 就发下一轮 GOTO。
+    所以控制器队列里可能同时压着 `GOTO(N) / HANDLE(N) / GOTO(N+1)`。
+
+    把 `self._placed[mtype] = level` 和 `self._picked = True` 挪到 detach 回调里以后：
+    - 同类型的下一块 HANDLE 生成时读到旧的 `_placed`，两块抢同一层；
+    - `GOTO(N+1)` 生成时 `_picked` 仍是 False，误判「上轮物料没被取走」，
+      把已安排取走的料送进回收位（实测 `material_04` 落到 z=0.023）。
+
+    自验会直接抓到（C3/C4/C5 三条 FAIL，x 偏 −475 mm）。判读口诀：
+    **凡是"下一轮要用的状态"，都必须在收到任务时就写，不能等动作执行完**。
+    真正的执行结果只用于统计/判分（看板走 `attach_XX`/`detach_XX` 是另一条路，不受影响）。
+
 ## 6. 已验证 / 未做
 
 **一键自验**：`./scripts/verify_sim_m2.sh`（M3 一轮约 200 s）。起真视觉跑一整轮，等日志里第 12 次

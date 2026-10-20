@@ -280,7 +280,9 @@ class GantryController(Node):
 
         if action == "GOTO":
             self._round += 1
-            self.queue.append(self._goto_steps(slot))
+            # 轮次随步骤一起入队：队列可能积压（决策 fire-and-forget），
+            # 执行时再读 self._round 会把第 1 轮的日志打成「轮次 2」。
+            self.queue.append(self._goto_steps(slot, self._round))
         elif action == "HANDLE":
             self.queue.append(self._handle_steps(slot, kind))
         elif action == "HOME":
@@ -288,7 +290,7 @@ class GantryController(Node):
         else:
             self.get_logger().warn("[sim/control] 未知 action='%s'，忽略" % msg.action)
 
-    def _goto_steps(self, slot):
+    def _goto_steps(self, slot, rnd):
         """M3：GOTO = 去置物台上方（到位后触发视觉识别置物台上的物料）。
 
         供料按 slot_id：第 slot 号 GOTO 把 material_slot 从供料管传送到置物台
@@ -321,7 +323,7 @@ class GantryController(Node):
         steps.append(_Step("move", targets={"x": sx, "y": sy + self._goto_offset_y},
                            speed=self.xy_speed))
         steps.append(_Step("settle", seconds=self.settle_s))
-        steps.append(_Step("event", name="arrived", slot=slot))
+        steps.append(_Step("event", name="arrived", slot=slot, round=rnd))
         return steps
 
     def _handle_steps(self, slot, mtype):
@@ -335,6 +337,12 @@ class GantryController(Node):
             steps = [_Step("move", targets={"z": self.travel_z}, speed=self.z_speed),
                      _Step("event", name="handled", slot=slot)]
             return steps
+        if self._staged != slot:
+            # 协议错乱（HANDLE 与台面物料不是同一块）：宁可报错也别把错的料吸走。
+            # 正常链路不会出现——决策严格按 GOTO(N) -> 视觉 -> HANDLE(N) 下发。
+            self.get_logger().error(
+                "[sim/control] HANDLE slot=%d，但置物台上是 material %02d："
+                "按台面物料继续（请检查决策/控制时序）" % (slot, self._staged))
         level = self._placed[mtype] + 1
         cell = self.layout.rack_cell(mtype, level)
         steps = []
@@ -368,6 +376,13 @@ class GantryController(Node):
             _Step("move", targets={"z": self.travel_z}, speed=self.z_speed),
             _Step("event", name="handled", slot=slot),
         ]
+        # 层位与「已取走」必须在**生成步骤时**提交（别改成 detach 时提交）：
+        # 决策是 fire-and-forget——DispatchMaterialTask 之后立刻 RecordSlotResult 记 OK，
+        # 不等 handle_done 就发下一轮 GOTO。队列里可能同时压着 GOTO(N)、HANDLE(N)、
+        # GOTO(N+1)。若等 detach 执行时才提交：
+        #   1) 同类型的下一块 HANDLE 会用同一个 level，两块抢同一层；
+        #   2) GOTO(N+1) 生成时 `_picked` 仍为 False，会把已安排取走的物料误送回收位
+        #      （实测掉料 1/12，material_04 落到回收位 z=0.023）。
         self._placed[mtype] = level
         self._picked = True
         return steps
@@ -612,7 +627,7 @@ class GantryController(Node):
             # 采集请求：真视觉链路靠这条触发拍照（ground-truth 桩不订阅它，无副作用）
             self.trigger_pub.publish(Empty())
             self.get_logger().info("[sim/control] 轮次 %d 到位置物台上方，已通知 vision"
-                                   % self._round)
+                                   % int(getattr(step, "round", self._round)))
         elif step.name == "handled":
             msg = UInt8()
             msg.data = int(step.slot)
