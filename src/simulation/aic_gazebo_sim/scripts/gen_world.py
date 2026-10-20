@@ -293,6 +293,51 @@ def place_table(layout):
     return "".join(out)
 
 
+def scene_cam(layout):
+    """自由摄像机（scene_cam）：看板页面的「全景/自由视角」数据源。
+
+    默认机位 = 货架正前上方的全景俯视，整个抓取搬运过程一目了然；
+    运行时可通过 /world/<w>/set_pose 服务移动（aic_dashboard 看板的
+    相机控制按钮走这条路），姿态随预设机位一并设置。模型是 static 的，
+    set_pose 平移/转动都合法（相当于挪机位，不参与物理）。
+    """
+    cam = layout.get("scene_cam") or {}
+    p = [float(v) for v in cam.get(
+        "pose", [0.0, -0.95, 1.15, 0.0, 0.88, 1.5708])]
+    fov = float(cam.get("fov_h", 1.30))
+    w = int(cam.get("width", 960))
+    h = int(cam.get("height", 540))
+    rate = float(cam.get("update_rate", 15.0))
+    out = [
+        '    <!-- 自由摄像机：全景默认机位，看板可经 set_pose 服务自由移动 -->\n',
+        '    <model name="scene_cam">\n',
+        "      <static>true</static>\n",
+        "      <pose>{} {} {} {} {} {}</pose>\n".format(*["{:.4f}".format(v) for v in p]),
+        '      <link name="body">\n',
+        '        <visual name="body">\n',
+        "          <geometry><box><size>0.09 0.09 0.09</size></box></geometry>\n",
+        "          <material><ambient>0.9 0.3 0.3 1</ambient>"
+        "<diffuse>0.9 0.3 0.3 1</diffuse></material>\n",
+        "        </visual>\n",
+        '        <sensor name="scene_camera" type="camera">\n',
+        "          <pose>0 0 0 0 0 0</pose>\n",
+        "          <topic>/scene/image</topic>\n",
+        "          <update_rate>{}</update_rate>\n".format(rate),
+        "          <always_on>1</always_on>\n",
+        "          <visualize>false</visualize>\n",
+        "          <camera>\n",
+        "            <horizontal_fov>{}</horizontal_fov>\n".format(fov),
+        "            <image><width>{}</width><height>{}</height>"
+        "<format>R8G8B8</format></image>\n".format(w, h),
+        "            <clip><near>0.05</near><far>20</far></clip>\n",
+        "          </camera>\n",
+        "        </sensor>\n",
+        "      </link>\n",
+        "    </model>\n",
+    ]
+    return "".join(out)
+
+
 def defect_rng(layout, slot_id, seed=None):
     """每块铁片一个独立随机流：同一 (seed, slot_id) 必然抽出同一组几何。
 
@@ -483,7 +528,7 @@ def build_sdf(layout, seed=None):
     slots = slot_centers(layout)
     types = material_types(layout, len(slots))
 
-    out = [HEADER, rack_model(layout), place_table(layout)]
+    out = [HEADER, rack_model(layout), place_table(layout), scene_cam(layout)]
     out.append("    <!-- ===== 12 块圆形铁片（动态；类型见 sim_layout.yaml materials.types）===== -->\n")
     for s, t in zip(slots, types):
         out.append(plate_model(layout, s, t, seed))

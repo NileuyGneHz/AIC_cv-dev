@@ -77,3 +77,14 @@ place_zones:
   rim_height: 0.012    # m，格口围边高度（防止放下后滑出）
   xs: [-0.36, -0.12, 0.12, 0.36]   # 类型 1/2/3/4 的格心 x
   # 放下时 Z 用 gantry.pick_z：抓取点与放置点同高，铁片底面正好落到台面。
+
+# 自由摄像机（scene_cam，看板页面的「全景/自由视角」数据源）
+#   pose = [x y z roll pitch yaw]（默认机位：货架正前上方全景俯视）；
+#   运行时可经 /world/aic_warehouse/set_pose 服务移动（看板相机按钮），改这里只是改初始机位。
+#   改动后需重跑 gen_world.py 并重启仿真。
+scene_cam:
+  pose: [0.0, -0.95, 1.15, 0.0, 0.88, 1.5708]
+  fov_h: 1.30          # rad，水平视场
+  width: 960
+  height: 540
+  update_rate: 15.0    # Hz

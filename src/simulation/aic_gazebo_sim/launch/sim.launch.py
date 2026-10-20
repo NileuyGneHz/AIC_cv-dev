@@ -47,6 +47,9 @@ BRIDGE_TOPICS = [
 CAMERA_TOPICS = [
     "/camera/image@sensor_msgs/msg/Image[ignition.msgs.Image",
     "/camera/camera_info@sensor_msgs/msg/CameraInfo[ignition.msgs.CameraInfo",
+    # 自由摄像机（scene_cam，看板「全景/自由视角」用；模型在 gen_world.py 里生成）
+    "/scene/image@sensor_msgs/msg/Image[ignition.msgs.Image",
+    "/scene/camera_info@sensor_msgs/msg/CameraInfo[ignition.msgs.CameraInfo",
 ]
 
 
