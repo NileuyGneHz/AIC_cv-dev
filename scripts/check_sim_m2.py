@@ -1,0 +1,169 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+"""断言一次 M2 仿真（真视觉 + 抓取码放）的三组结果，全部本地文件，不依赖 ROS。
+
+用法：
+  /usr/bin/python3 scripts/check_sim_m2.py \
+      --results logs/verify_m2_xxx.csv \
+      --log     logs/verify_m2_xxx.log \
+      --pose    logs/verify_m2_pose_xxx.txt
+
+检查项：
+  A. 决策结果：results CSV 恰好 12 行，result 全为 OK，材料类型与
+     sim_layout.yaml 的 materials.types 逐位一致。
+  B. 夹持闭环：日志里 `夹持（DetachableJoint attach）` 与 `释放（... detach）`
+     的条数都等于位点数（12）。只数 attach 不够 —— 决策退出时若不等控制队列
+     排空，最后一块料会卡在夹爪里（看 simulation_guide.md 坑 19）。
+  C. 物理落位：pose/info 里 12 块铁片都在 +Y 码放条上，x 落在对应类型的格心
+     容差内，z 停在台面上（不是掉到碰撞板/地面）。
+
+全部通过打印 PASS 并以 0 退出；任何一条不过打印 FAIL 并以 1 退出。
+"""
+import argparse
+import csv
+import os
+import re
+import sys
+
+import yaml
+
+# 世界模型名后缀 -> 缺陷类型编号（与 defect_classifier.TYPE_NAMES 一致）
+SUFFIX_TYPE = {"scratch": 1, "stain": 2, "chip": 3, "hole": 4}
+
+NAME_BLOCK = re.compile(r'^\s*name:\s*"([^"]+)"', re.M)
+POS_BLOCK = re.compile(
+    r'position\s*\{\s*x:\s*([-\d.eE+]+)\s*y:\s*([-\d.eE+]+)\s*z:\s*([-\d.eE+]+)')
+
+
+def parse_pose(path):
+    """从 `ign topic -e -t .../pose/info` 的文本里取 material_* 的世界坐标。"""
+    txt = open(path, "r", encoding="utf-8", errors="replace").read()
+    out = {}
+    for m in NAME_BLOCK.finditer(txt):
+        name = m.group(1)
+        if not name.startswith("material_"):
+            continue
+        pos = POS_BLOCK.search(txt, m.end(), m.end() + 1200)
+        if not pos:
+            out[name] = None
+            continue
+        out[name] = tuple(float(pos.group(i)) for i in (1, 2, 3))
+    return out
+
+
+def type_of(model_name):
+    """material_01_scratch -> 1；未知后缀返回 None。"""
+    suffix = model_name.rsplit("_", 1)[-1]
+    return SUFFIX_TYPE.get(suffix)
+
+
+def read_results(path):
+    with open(path, newline="", encoding="utf-8") as fh:
+        return list(csv.DictReader(fh))
+
+
+def count_log(path, needle):
+    n = 0
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            if needle in line:
+                n += 1
+    return n
+
+
+def main():
+    ap = argparse.ArgumentParser(description="校验 M2 仿真搬运结果")
+    ap.add_argument("--results", required=True, help="决策结果 CSV")
+    ap.add_argument("--log", required=True, help="ros2 launch 的完整日志")
+    ap.add_argument("--pose", required=True, help="pose/info 的转储文本")
+    ap.add_argument("--layout",
+                    default="src/simulation/aic_gazebo_sim/config/sim_layout.yaml",
+                    help="场景布局 YAML（取 place_zones 与 materials.types）")
+    ap.add_argument("--xy-tol", type=float, default=0.004,
+                    help="落位与格心的水平容差（m，默认 4 mm）")
+    args = ap.parse_args()
+
+    layout = yaml.safe_load(open(args.layout, encoding="utf-8"))
+    expect_types = [int(t) for t in layout["materials"]["types"]]
+    n_slots = len(expect_types)
+    place = layout.get("place_zones") or {}
+    xs = [float(x) for x in (place.get("xs") or [])]
+    place_y = float(place.get("y", 0.0))
+    deck_z = float(place.get("z", 0.10))
+    thick = float(layout["plate"]["thickness"])
+
+    fails = []
+
+    # ---- A. 决策结果 ----
+    rows = read_results(args.results)
+    if len(rows) != n_slots:
+        fails.append("A1 结果行数 %d != %d" % (len(rows), n_slots))
+    for row in rows:
+        if row.get("result") != "OK":
+            fails.append("A2 第 %s 位点（slot %s）结果 %s：%s"
+                         % (row.get("visit_index"), row.get("slot_id"),
+                            row.get("result"), row.get("note", "")))
+        # 坑：结果表是**巡视顺序**（4,3,2,1,5,...），而 materials.types 是**库位顺序**，
+        #     必须用 slot_id 去查，不能按行号对齐（否则类型断言全错但看着很像真错）。
+        slot = int(row.get("slot_id") or 0)
+        if not 1 <= slot <= n_slots:
+            fails.append("A4 位点 slot_id=%s 越界" % row.get("slot_id"))
+            continue
+        expect = expect_types[slot - 1]
+        if int(row.get("material_type") or 0) != expect:
+            fails.append("A3 slot %d 类型 %s != 期望 %d"
+                         % (slot, row.get("material_type"), expect))
+
+    # ---- B. 夹持 / 释放成对 ----
+    n_attach = count_log(args.log, "夹持（DetachableJoint attach）")
+    n_detach = count_log(args.log, "释放（DetachableJoint detach）")
+    if n_attach != n_slots:
+        fails.append("B1 夹持 %d 次 != %d（有料没被抓起，或决策退出太早）"
+                     % (n_attach, n_slots))
+    if n_detach != n_slots:
+        fails.append("B2 释放 %d 次 != %d（最后一块料可能卡在夹爪里，见坑 19）"
+                     % (n_detach, n_slots))
+
+    # ---- C. 物理落位 ----
+    poses = parse_pose(args.pose)
+    if len(poses) != n_slots:
+        fails.append("C0 pose/info 里只有 %d 块铁片（应为 %d），转储是否完整？"
+                     % (len(poses), n_slots))
+    z_lo = deck_z + thick * 0.25          # 至少贴在台面上（掉下去会接近 0.013）
+    z_hi = deck_z + thick * (n_slots + 1)  # 叠满也不会超过这个上限
+    print("%-22s %8s %8s %8s %8s %8s" % ("model", "x", "y", "z", "dx(mm)", "dy(mm)"))
+    for name in sorted(poses):
+        tid = type_of(name)
+        pos = poses[name]
+        if pos is None:
+            fails.append("C1 %s 解析不出坐标" % name)
+            continue
+        x, y, z = pos
+        if tid is None or not 0 < tid <= len(xs):
+            fails.append("C2 %s 的类型后缀无法映射到码放格" % name)
+            continue
+        dx = (x - xs[tid - 1]) * 1000.0
+        dy = (y - place_y) * 1000.0
+        print("%-22s %8.4f %8.4f %8.4f %8.1f %8.1f" % (name, x, y, z, dx, dy))
+        if abs(dx) > args.xy_tol * 1000.0:
+            fails.append("C3 %s x 偏格心 %.1f mm（容差 %.0f mm）"
+                         % (name, dx, args.xy_tol * 1000.0))
+        if abs(dy) > args.xy_tol * 1000.0:
+            fails.append("C4 %s y 偏码放条中心 %.1f mm" % (name, dy))
+        if not (z_lo <= z <= z_hi):
+            fails.append("C5 %s z=%.4f 不在台面高度区间 [%.4f, %.4f]"
+                         "（掉到碰撞板/地面？）" % (name, z, z_lo, z_hi))
+
+    print()
+    if fails:
+        print("FAIL（%d 条）" % len(fails))
+        for f in fails:
+            print("  - " + f)
+        return 1
+    print("PASS：决策 %d/%d OK、夹持与释放各 %d 次、%d 块铁片全部落在对应类型的格内"
+          % (len(rows), n_slots, n_attach, len(poses)))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

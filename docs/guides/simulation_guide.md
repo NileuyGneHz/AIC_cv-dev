@@ -242,6 +242,19 @@ ros2 launch aic_gazebo_sim sim_decision.launch.py invalid_rate:=0.3
 
 ## 6. 已验证 / 未做
 
+**一键自验**：`./scripts/verify_sim_m2.sh`（约 100 s）。起真视觉跑一整轮，等日志里第 12 次
+`detach` 出现（**不用固定 sleep**，否则最后一块还在飞行中就被 kill），抓 `pose/info`，
+再调 `scripts/check_sim_m2.py` 断言三组：
+
+| 组 | 断言 |
+|---|---|
+| A 决策结果 | 12 行全 `OK`；每个位点按 `slot_id` 查 `materials.types`，类型逐位一致 |
+| B 夹持闭环 | 日志 `夹持` 与 `释放` 各 12 条（只数 attach 会漏掉坑 19） |
+| C 物理落位 | 12 块铁片 x 与格心差 ≤4 mm、y 与码放条中心差 ≤4 mm、z 在台面高度区间 |
+
+`--vision gt` 可切真值桩，用来把「视觉判错」与「控制/物理问题」分开。
+负向自测：拿 `drop_rate:=0.6` 的结果喂进去，A2/A3/B1/B2 全报 FAIL（脚本本身也验过）。
+
 **已验证（2026-10-20，M2）**
 
 - **真视觉 + 完整搬运，单轮 12 位点：OK 12 / TIMEOUT 0，四类全对**

@@ -35,6 +35,9 @@ Team workspace conventions live in [AGENTS.md](AGENTS.md) (AI 助手入口) and
 #    A=正常 12 位点；B=每 5 条注入一条非法值（验证 TIMEOUT 兜底不中断）
 ./scripts/verify_decision_loop.sh        # 结果落 logs/verify_full_run.log
 
+# 3.5 仿真搬运自验（M2）：真视觉跑一整轮，断言 12/12 + 夹放各 12 次 + 12 块料落对格
+./scripts/verify_sim_m2.sh               # 约 100 s；--vision gt 可排除视觉因素
+
 # 4. 单独起决策节点（真 vision / control 接入后同样这么起）
 ./scripts/run_decision.sh
 ```
@@ -46,6 +49,8 @@ Team workspace conventions live in [AGENTS.md](AGENTS.md) (AI 助手入口) and
 | `scripts/fake_vision_pub.py` | 假 vision：收到 GOTO 后回 `"1".."4"`，可注入非法值 / 静默 |
 | `scripts/record_task_topic.py` | 记录 `/control/material_task`，导出 CSV 与汇总 |
 | `scripts/check_decision_run.py` | 断言：位点顺序 / 类型序列 / GOTO·HANDLE 条数 / TIMEOUT 数 |
+| `scripts/verify_sim_m2.sh` | 跑一整轮真视觉搬运，再调下面的断言脚本 |
+| `scripts/check_sim_m2.py` | 断言：结果 12/12、夹放各 12 次、12 块料 x/y/z 落位 |
 
 ## 目录
 
