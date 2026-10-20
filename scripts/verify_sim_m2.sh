@@ -130,7 +130,7 @@ trap cleanup EXIT
 echo "[verify] 等待 ${N_SLOTS} 次释放（上限 ${LIMIT}s）..."
 for ((t = 0; t < LIMIT; t++)); do
   sleep 1
-  n=$(grep -c '释放（DetachableJoint detach）' "${LOG}" 2>/dev/null || true)
+  n=$(grep -c '释放（吸盘断气 / DetachableJoint detach）' "${LOG}" 2>/dev/null || true)
   if [[ "${n:-0}" -ge "${N_SLOTS}" ]]; then
     echo "[verify] 释放已达 ${n} 次（t=${t}s），等 3 s 让铁片落稳"
     break
