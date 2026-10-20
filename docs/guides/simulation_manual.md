@@ -8,18 +8,18 @@
 
 ## 1. 系统一句话
 
-在一个 12 库位货架场景里，三轴龙门（含末端俯视相机）按决策行为树的指令巡视：
-到位 → 视觉识别缺陷类型（真值桩或真视觉）→ 抓取铁片 → 搬到对应类型的码放格放下。
-链路上控制侧、视觉侧都是可替换实现，话题契约不变。
+对齐官方 VirtualNext 平台的节拍：**置物台上料 → 固定相机拍照识别 → 三轴龙门吸盘取料 → 放入货架对应类型列的最低空层（每格一块，不堆叠）**。
+一轮比赛 = 12 个上料轮次：每个轮次把 `material_NN` 从供料管传送到置物台、拍照判型，再按判型放进对应列。
 
 ```text
-决策 bt_runner (C++)
+决策 bt_runner (C++)   —— 12 个"位点" = 12 个上料轮次（slot_id 只是轮次编号）
    │ /control/material_task (aic_msgs/MaterialTask)
    ▼
-gantry_controller.py ──► /aic/joint/{x,y,z}/cmd_pos ──► ros_gz_bridge ──► Gazebo
-   │  ▲                       （DetachableJoint 夹/放：/sim/attach_XX / /sim/detach_XX）
-   │  └── /world/aic_warehouse/model/aic_gantry/joint_state（闭环到位判定）
-   ├──► /sim/gantry_arrived(UInt8 slot) ──► 视觉（真值桩或 aic_vision_trad）
+gantry_controller.py ── 上料：ign service set_pose 把 material_NN 从供料管传到置物台
+   │                 ── 运动：/aic/joint/{x,y,z}/cmd_pos ─► ros_gz_bridge ─► Gazebo
+   │                 ── 取/放：/sim/attach_NN / /sim/detach_NN（DetachableJoint 模拟吸盘）
+   │  ▲ ── /world/aic_warehouse/model/aic_gantry/joint_state（闭环到位判定）
+   ├──► /sim/gantry_arrived(UInt8 slot) ──► 视觉（真值桩或 aic_vision_trad，固定 ee_cam 拍置物台）
    └──► /sim/handle_done(UInt8 slot)
 视觉 ──► /vision/material_type (String "1".."4") ──► 决策
 ```
@@ -134,20 +134,27 @@ materials:
 
 | 段 | 关键字段 | 含义 |
 |---|---|---|
-| `rack` | `cols:4 rows:3 pitch_x:0.25 pitch_y:0.1667` | 3×4 库位，slot_id=(row−1)·4+col，row 1 在 −Y 前排 |
-| `plate` | `diameter:0.08 thickness:0.006` | 铁片 φ80×6 mm |
-| `materials` | `types` / `jitter_seed` | 类型真值表 / 几何随机化种子 |
-| `gantry` | `xy_speed:0.30 z_speed:0.20 pick_z:−0.04 pos_tol:0.003 vel_tol:0.010 move_timeout_s:8` | 运动剖面与闭环到位阈值 |
-| `camera` | `width:640 height:480 update_rate:20` | 末端俯视相机 |
-| `place_zones` | 4 个格心 x = −0.36/−0.12/+0.12/+0.36，y=0.30 | 码放格（按类型），真机料框排布拿到后改这里 |
-| `scene_cam` | `pose / fov / width:960 height:540 / update_rate:15` | 自由摄像机（看板全景主画面 `/scene/image`；机位可在看板页面上调，改默认值才需要动这里） |
+| `rack` | `cols:4 rows:3 pitch_x:0.25 level_pitch_z:0.06 y_front:0.31 level_step_y:0.11` | 放置货架：4 类型列 × 3 层，每格一块；层位沿 +Y 阶梯错开（防吸盘升降撞上层托盘） |
+| `plate` | `diameter:0.08 thickness:0.006 mass:0.05` | 圆形物料 φ80×6 mm |
+| `materials` | `types` / `jitter_seed` | 类型真值表（第 k 轮 = `types[k-1]`）/ 几何随机化种子 |
+| `gantry` | `xy_speed:0.30 z_speed:0.20 travel_z:0.02 pad_z0:0.239` + 闭环阈值 | 运动剖面、行进高度、吸盘基准与到位判据 |
+| `camera` | `mount:[x y z r p y]` `width:640 height:480` | **固定式**末端相机（装在置物台正上方；M3 起不再挂在龙门上） |
+| `staging` | `x:0.30 y:-0.15 z:0.10 goto_offset_y:0.10` | 置物台（取料源）+ GOTO 停靠偏移（让吸盘退出光路） |
+| `magazine` | `x:-0.42 floor_z:0.085 tube_h:0.09` | 供料管：12 块物料开机全部叠在这里，按轮次传送 |
+| `recycle` | `x:-0.10 y:-0.15 z:0.02` | 回收位：识别失败没被取走的物料送到这，保证台面同时只有一块 |
+| `scene_cam` | `pose / fov / width:960 height:540 / update_rate:15` | 自由摄像机（看板全景主画面 `/scene/image`） |
 
-坐标系：+X 右（列增大）、+Y 远（row 3）、+Z 上；行进高度下相机画面 **右=+X、上=−Y**。
+坐标系：+X 右（类型列 1→4）、+Y 远（货架在 +Y 侧）、+Z 上；相机画面 **右=+X、上=−Y**。
 
 ### 6.3 决策侧参数
 
 `src/decision/aic_behavior_tree/config/aic_decision_params.yaml`。
-最敏感的一个：`vision_timeout_s`（默认 12.0）——它必须覆盖「HANDLE(≈4.3 s) + GOTO(≈1.5 s) + 视觉延迟」，偏小的后果是**迟到的识别结果被下一个位点收下（类型错位，结果表仍显示 OK）**。真机把 HANDLE 压短后应同步收小。
+最敏感的一个：`vision_timeout_s`——它必须覆盖「上一个位点的 HANDLE + 本次 GOTO + 视觉延迟」。
+决策是 fire-and-forget：GOTO(N) 下发时，控制队列里还压着 HANDLE(N−1)。M3 实测该队列时延
+**12.8 s（HANDLE）+ 2.5 s（GOTO）= 15.5 s**，所以仿真 launch 默认给到 **30.0**
+（`sim_decision.launch.py` 的 `vision_timeout_s`，会覆盖 yaml 里的值）。
+偏小的后果不只是「慢」，更是**迟到的识别结果被下一个位点收下（类型错位，结果表仍显示 OK）**。
+真机 HANDLE 只有夹爪一开一合，实际参数应以真机节拍重定。
 
 ## 7. 缺陷几何随机化（阈值泛化检验）
 
