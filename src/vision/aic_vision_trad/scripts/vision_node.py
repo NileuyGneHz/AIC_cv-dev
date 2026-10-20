@@ -155,8 +155,9 @@ class VisionTradNode(Node):
         msg.data = str(tid)
         self.pub.publish(msg)
         self._last_pub = time.monotonic()
-        self.get_logger().info("[vision] 判定 {}（{}）<- {}".format(
-            TYPE_NAMES[tid], tid, why))
+        self.get_logger().info("[vision] 判定 {}（{}）<- {}（r={:.1f}px{}）".format(
+            TYPE_NAMES[tid], tid, why, res["plate"]["r"],
+            "" if res["plate"].get("refined") else "，精修被拒"))
 
         if self.debug_dir:
             self._dump_debug(res, tid)

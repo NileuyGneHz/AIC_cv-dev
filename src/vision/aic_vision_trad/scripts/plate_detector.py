@@ -8,6 +8,14 @@
   实测同一批图里圆心能在 (220,240) 与 (319,239) 之间乱跳。
   改用「先找暗凹槽 -> 只在凹槽 ROI 内拟合圆」，圆心稳定在 ±3 px。
 
+为什么 Hough 之后还要精修（坑 18）：
+  HoughCircles 的输出落在 dp 网格上（dp=1.2 时坐标是 1.2 px 的整数倍），
+  同一台相机、同一高度下逐帧半径会在 80.3~87.4 px 之间跳、圆心 cy 差 7 px。
+  而 frac / rad 全部按盘半径归一化 —— 半径小 9%，压在盘缘的缺角就会被 0.93r 的
+  掩膜切掉大半（实测 frac 0.072 -> 0.030），阈值只能往最坏情况让，余量全没了。
+  所以 find_disc_global 末尾统一调 refine_circle()：径向边缘扫描 + Kasa 拟合，
+  实测组内半径抖动从 2.30 px 降到 0.10~0.49 px，四类特征的帧间散差随之塌到 1e-3 量级。
+
 坐标全部以「盘半径 r」归一化，因此对相机高度不敏感。
 """
 
@@ -48,6 +56,18 @@ class DetectorParams(object):
         # 离图像中心越远扣分越重，用于在同分候选里优先取近中心的
         self.disc_center_penalty = 80.0
         self.disc_hough_param2_seq = (60, 50, 42, 34)
+        # ---- 圆精修（refine_circle）----
+        # 径向扫描的射线数 / 半径采样点数
+        self.refine_rays = 180
+        self.refine_radii = 40
+        # 扫描半径范围（相对 Hough 半径）
+        self.refine_band = (0.80, 1.20)
+        # 单条射线的边缘梯度峰值下限（相邻采样点的灰阶差），低于它视为该方向被遮挡
+        self.refine_grad_min = 6.0
+        # 精修结果被采纳的条件：内点占比、半径相对变化、残差（像素）
+        self.refine_inlier_min = 0.45
+        self.refine_max_dr = 0.12
+        self.refine_max_resid = 1.5
         for k, v in kw.items():
             if not hasattr(self, k):
                 raise AttributeError("未知参数: {}".format(k))
@@ -155,6 +175,77 @@ def extract_defects(gray, plate, p):
     return level, comps
 
 
+def _kasa_fit(px, py):
+    """代数最小二乘圆拟合（Kasa）：返回 (cx, cy, r)。"""
+    a = np.column_stack([2.0 * px, 2.0 * py, np.ones_like(px)])
+    b = px * px + py * py
+    sol, *_ = np.linalg.lstsq(a, b, rcond=None)
+    cx, cy = float(sol[0]), float(sol[1])
+    r = float(np.sqrt(max(1e-9, sol[2] + cx * cx + cy * cy)))
+    return cx, cy, r
+
+
+def refine_circle(gray, plate, p):
+    """把 Hough 给的整像素圆精修成亚像素圆：径向边缘扫描 + Kasa 拟合。
+
+    为什么需要（坑 18）：
+      `HoughCircles(dp=1.2)` 的输出是 1.2 px 网格上的整数，同一个静止场景逐帧跑
+      半径会在 80.3–87.4 px 之间跳（±4%），圆心 cy 能差 7 px。而下游所有几何量
+      （frac / rad）都按盘半径归一化，半径偏小 9% 就会把压在盘缘的缺角切掉大半
+      （实测 frac 0.072 → 0.030），判据阈值根本没法设稳。
+      这里沿 N 条射线找「亮盘 -> 暗底」的边缘点，再用最小二乘拟合，半径抖动降到
+      亚像素级；被夹指挡住的方向按梯度峰值强度剔除。
+
+    接受条件（不满足就退回 Hough 原值，宁可不改也不改坏）：
+      内点占比 >= refine_inlier_min、|dr|/r <= refine_max_dr、残差 <= refine_max_resid。
+
+    返回 dict(cx, cy, r, refined, inliers, resid)。
+    """
+    cx0, cy0, r0 = float(plate["cx"]), float(plate["cy"]), float(plate["r"])
+    h, w = gray.shape[:2]
+    lo, hi = p.refine_band
+    radii = np.linspace(r0 * lo, r0 * hi, int(p.refine_radii))
+    thetas = np.linspace(0.0, 2.0 * np.pi, int(p.refine_rays), endpoint=False)
+
+    xs = cx0 + np.outer(np.cos(thetas), radii)
+    ys = cy0 + np.outer(np.sin(thetas), radii)
+    samp = cv2.remap(gray.astype(np.float32), xs.astype(np.float32), ys.astype(np.float32),
+                     cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+    # 沿半径方向的梯度：只有「由亮转暗」的边缘才算盘缘（正梯度，取负号）
+    grad = -np.diff(samp, axis=1)
+    idx = np.argmax(grad, axis=1)
+    peak = grad[np.arange(grad.shape[0]), idx]
+
+    keep = peak >= max(p.refine_grad_min, 0.5 * float(np.median(peak)))
+    if keep.sum() < max(8, int(p.refine_inlier_min * len(thetas))):
+        return {"cx": cx0, "cy": cy0, "r": r0, "refined": False, "inliers": 0, "resid": 0.0}
+
+    r_edge = radii[idx] + 0.5 * (radii[1] - radii[0])
+    ex = cx0 + r_edge * np.cos(thetas)
+    ey = cy0 + r_edge * np.sin(thetas)
+
+    # 两轮离群剔除后再拟合（夹指边缘、盘面缺陷都可能贡献假边缘点）
+    cx, cy, r = cx0, cy0, r0
+    sel = keep.copy()
+    for _ in range(2):
+        if sel.sum() < 8:
+            break
+        cx, cy, r = _kasa_fit(ex[sel], ey[sel])
+        resid = np.abs(np.hypot(ex - cx, ey - cy) - r)
+        tol = max(1.0, 2.0 * float(np.median(resid[sel])))
+        sel = keep & (resid <= tol)
+
+    resid_all = float(np.median(np.abs(np.hypot(ex - cx, ey - cy) - r)[sel])) if sel.any() else 99.0
+    inlier_ratio = float(sel.sum()) / float(len(thetas))
+    if (inlier_ratio < p.refine_inlier_min
+            or abs(r - r0) > p.refine_max_dr * r0
+            or resid_all > p.refine_max_resid):
+        return {"cx": cx0, "cy": cy0, "r": r0, "refined": False,
+                "inliers": round(inlier_ratio, 2), "resid": round(resid_all, 2)}
+    return {"cx": cx, "cy": cy, "r": r, "refined": True,
+            "inliers": round(inlier_ratio, 2), "resid": round(resid_all, 2)}
+
+
 def find_disc_global(gray, p):
     """在整图上直接找盘（主路径）：Hough 圆 + 「内亮外暗」环对比筛选。
 
@@ -196,7 +287,10 @@ def find_disc_global(gray, p):
             break
     if best is None:
         return None
-    return {"cx": best[1], "cy": best[2], "r": best[3], "contrast": best[4]}
+    plate = {"cx": best[1], "cy": best[2], "r": best[3], "contrast": best[4]}
+    # Hough 只给到 1.2 px 网格；再精修一步，否则半径抖动会污染所有归一化判据
+    plate.update(refine_circle(gray, plate, p))
+    return plate
 
 
 def detect(gray, p=None):
@@ -214,6 +308,9 @@ def detect(gray, p=None):
     if plate is None:
         pocket = find_pocket(gray, p)
         plate = find_plate(gray, pocket, p) if pocket else None
+        if plate is not None:
+            # 兜底路径同样要精修：下游判据只认归一化量，半径精度决定一切
+            plate.update(refine_circle(gray, plate, p))
     if plate is None:
         return None
 
