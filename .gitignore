@@ -43,3 +43,10 @@ __pycache__/
 .idea/
 *.swp
 *~
+
+# === 本地构建依赖 / 临时目录（可重装，不入库）===
+.pptx_deps/
+.pip_tmp/
+.lo_profile/
+.lo_tmp/
+logs/ppt_qa/

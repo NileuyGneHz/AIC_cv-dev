@@ -31,7 +31,7 @@ from defect_classifier import TYPE_NAMES, classify         # noqa: E402
 NAME_TYPE = {v: k for k, v in TYPE_NAMES.items()}
 
 TILE_W, TILE_H = 380, 285
-CAP_H = 58
+CAP_H = 70   # 每格下方标注 3 行（类型 + 判据 + 余量），58 会把最后一行切掉
 HEAD_H = 40
 COLS = 3
 
@@ -82,7 +82,7 @@ def build(frames_dir, out_path, per_type=COLS, feat_csv=""):
 
     n_rows = len(frames)
     width = TILE_W * per_type
-    height = HEAD_H + (TILE_H + CAP_H) * n_rows
+    height = HEAD_H + (TILE_H + CAP_H) * n_rows + 14   # 底部留白，最后一行标注不贴边
     canvas = np.full((height, width, 3), 28, np.uint8)     # 深色底，与 IDE 深色主题一致
 
     cv2.putText(canvas, "AIC defect dataset  |  4 classes x %d samples  |  sim camera 640x480"
