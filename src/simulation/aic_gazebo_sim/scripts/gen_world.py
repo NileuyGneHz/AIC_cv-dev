@@ -164,6 +164,10 @@ def rack_model(layout):
         "          </material>\n",
         "        </visual>\n",
         '        <collision name="deck_col">\n',
+        # 坑：这里必须和上面的 visual 同 pose。漏写时 collision 落在 link 原点
+        #     （z∈[-0.01,0.01]），与可视台面差 90 mm。铁片还是 static 时看不出来，
+        #     一改成动态就整批掉到这块「看不见的碰撞板」上（实测停在 z=0.013）。
+        "          <pose>0 0 {} 0 0 0</pose>\n".format(top_z - 0.01),
         "          <geometry><box><size>{} {} 0.02</size></box></geometry>\n".format(
             deck_x, deck_y),
         "        </collision>\n",
@@ -203,22 +207,113 @@ def rack_model(layout):
     return "".join(out)
 
 
+def place_table(layout):
+    """分类码放条（+Y 侧）：一块台面 + 4 个格口（地贴 + 围边）。
+
+    真机台面 1000x500 已被 12 库位占满，仿真为跑通「搬运到按类型的目标格」才加这条。
+    坐标全部来自 sim_layout.yaml 的 place_zones 段。
+    """
+    pz = layout.get("place_zones")
+    if not pz:
+        return ""
+    rack = layout["rack"]
+    top_z = float(rack["top_z"])
+    cz = float(pz["z"])
+    py = float(pz["y"])
+    tile = float(pz["tile_size"])
+    rim_h = float(pz["rim_height"])
+    xs = [float(v) for v in pz["xs"]]
+
+    depth = tile + 0.02
+    width = (xs[-1] - xs[0]) + tile + 0.06
+    out = [
+        '    <!-- 分类码放条（{} x {} mm，上表面 z={}） -->\n'.format(
+            int(width * 1000), int(depth * 1000), cz),
+        '    <model name="place_table">\n',
+        "      <static>true</static>\n",
+        '      <link name="deck">\n',
+        '        <visual name="deck">\n',
+        "          <pose>0 {:.4f} {:.4f} 0 0 0</pose>\n".format(py, cz - 0.01),
+        "          <geometry><box><size>{} {} 0.02</size></box></geometry>\n".format(width, depth),
+        "          <material>\n",
+        "            <ambient>0.55 0.56 0.58 1</ambient>\n",
+        "            <diffuse>0.62 0.63 0.65 1</diffuse>\n",
+        "            <specular>0.0 0.0 0.0 1</specular>\n",
+        "          </material>\n",
+        "        </visual>\n",
+        '        <collision name="deck_col">\n',
+        # 同 rack：collision 必须跟 visual 同 pose。这里连 Y 也要给，
+        # 否则碰撞板落在 y=0（货架下方），码放到 y=0.30 的铁片会直接穿到地面。
+        "          <pose>0 {:.4f} {:.4f} 0 0 0</pose>\n".format(py, cz - 0.01),
+        "          <geometry><box><size>{} {} 0.02</size></box></geometry>\n".format(width, depth),
+        "        </collision>\n",
+    ]
+    # 4 个格口：浅色地贴 + 四边围边，方便人眼/回放区分类型
+    for i, x in enumerate(xs):
+        out.append(
+            '        <visual name="zone_{i}">\n'
+            "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
+            "          <geometry><box><size>{t} {t} 0.002</size></box></geometry>\n"
+            "          <material><ambient>0.28 0.30 0.33 1</ambient>"
+            "<diffuse>0.34 0.36 0.39 1</diffuse></material>\n"
+            "        </visual>\n".format(
+                i=i + 1, x=x, y=py, z=cz + 0.001, t=tile))
+        # 围边：两根沿 X、两根沿 Y，压在地贴四边
+        for name, dx, dy, sx, sy in (
+                ("rim_xa", 0.0, -(tile / 2.0), tile, 0.006),
+                ("rim_xb", 0.0, +(tile / 2.0), tile, 0.006),
+                ("rim_ya", -(tile / 2.0), 0.0, 0.006, tile),
+                ("rim_yb", +(tile / 2.0), 0.0, 0.006, tile)):
+            out.append(
+                '        <visual name="z{i}_{n}">\n'
+                "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
+                "          <geometry><box><size>{sx} {sy} {h}</size></box></geometry>\n"
+                "          <material><ambient>0.20 0.22 0.24 1</ambient>"
+                "<diffuse>0.26 0.28 0.30 1</diffuse></material>\n"
+                "        </visual>\n".format(
+                    i=i + 1, n=name, x=x + dx, y=py + dy, z=cz + rim_h / 2.0,
+                    sx=sx, sy=sy, h=rim_h))
+    out.append("      </link>\n")
+    out.append("    </model>\n\n")
+    return "".join(out)
+
+
 def plate_model(layout, slot, mtype):
-    """一块圆形铁片 + 该类缺陷的几何表达。静态模型：不会被物理扰动。"""
+    """一块圆形铁片 + 该类缺陷的几何表达。
+
+    动态模型（有质量/碰撞/摩擦）：HANDLE 时由 DetachableJoint 吸附到 z_carriage，
+    抬升后跟着走，放到目标格再松开。早前是 static，做不了抓取。
+    """
     plate = layout["plate"]
     rack = layout["rack"]
     r = float(plate["diameter"]) / 2.0
     th = float(plate["thickness"])
-    base_z = float(rack["top_z"]) + float(rack["tile_thickness"])
-    cz = base_z + th / 2.0
+    # 库位地贴只有 visual、没有 collision，铁片实际落在台面板上表面 top_z。
+    base_z = float(rack["top_z"])
+    # 抬高 0.2 mm：避免出生瞬间与地贴互相穿透，物理会把它弹一下
+    cz = base_z + th / 2.0 + 0.0002
     name = "material_{:02d}_{}".format(slot["id"], TYPE_NAMES[mtype])
     d = th / 2.0  # 铁片顶面在 link 内的 z
+    mass = float(plate.get("mass", 0.05))
+    ixx = mass * (3.0 * r * r + th * th) / 12.0
+    izz = mass * r * r / 2.0
 
     out = [
         '    <model name="{}">\n'.format(name),
-        "      <static>true</static>\n",
+        "      <static>false</static>\n",
         "      <pose>{:.4f} {:.4f} {:.4f} 0 0 0</pose>\n".format(slot["x"], slot["y"], cz),
         '      <link name="disc">\n',
+        '        <inertial>\n',
+        "          <mass>{}</mass>\n".format(mass),
+        "          <inertia>\n",
+        "            <ixx>{:.8g}</ixx><ixy>0</ixy><ixz>0</ixz>\n".format(ixx),
+        "            <iyy>{:.8g}</iyy><iyz>0</iyz><izz>{:.8g}</izz>\n".format(ixx, izz),
+        "          </inertia>\n",
+        '        </inertial>\n',
+        '        <collision name="disc_col">\n',
+        "          <geometry><cylinder><radius>{}</radius><length>{}</length></cylinder></geometry>\n".format(r, th),
+        "          <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>\n",
+        '        </collision>\n',
         '        <visual name="disc">\n',
         "          <geometry><cylinder><radius>{}</radius><length>{}</length></cylinder></geometry>\n".format(r, th),
         "          <material>\n",
@@ -268,24 +363,55 @@ def plate_model(layout, slot, mtype):
     return "".join(out)
 
 
+def gantry_model(layout, types, slots):
+    """把 models/aic_gantry/model.sdf 内联进世界，并给每块铁片挂一个 DetachableJoint。
+
+    为什么不用 <include> + 在铁片模型里挂插件（踩过）：
+      DetachableJoint 的 <child_model> 只在**自己的模型范围内**找（按 parent=本模型
+      过滤实体），平级模型一律报 "Child Model aic_gantry could not be found"。
+      所以插件必须挂在「持有方」——也就是龙门——child 指向铁片。
+      而 <include> 不能追加插件，只能内联模型。
+    为什么不直接给 model.sdf 写 12 份插件：库位号是数据、几何是代码。
+      让生成器拼「几何 + N 个插件」，改库位数不用碰 model.sdf。
+    """
+    src = os.path.join(PKG, "models", "aic_gantry", "model.sdf")
+    with open(src, "r", encoding="utf-8") as f:
+        text = f.read()
+    start = text.index("<model")
+    end = text.rindex("</model>") + len("</model>")
+    block = text[start:end]
+
+    plugs = []
+    for s, t in zip(slots, types):
+        name = "material_{:02d}_{}".format(s["id"], TYPE_NAMES[t])
+        plugs.append(
+            '    <plugin filename="ignition-gazebo-detachable-joint-system"\n'
+            '            name="ignition::gazebo::systems::DetachableJoint">\n'
+            "      <parent_link>z_carriage</parent_link>\n"
+            "      <child_model>{}</child_model>\n"
+            "      <child_link>disc</child_link>\n"
+            "      <attach_topic>/sim/attach_{:02d}</attach_topic>\n"
+            "      <detach_topic>/sim/detach_{:02d}</detach_topic>\n"
+            "    </plugin>\n".format(name, s["id"], s["id"]))
+
+    cut = block.rindex("</model>")
+    block = block[:cut] + "".join(plugs) + block[cut:]
+    # 落到 <world> 下，整体缩进 2 格，与其它顶层模型对齐
+    return "\n".join("  " + ln if ln.strip() else ln for ln in block.splitlines()) + "\n\n"
+
+
 def build_sdf(layout):
     slots = slot_centers(layout)
     types = material_types(layout, len(slots))
 
-    out = [HEADER, rack_model(layout)]
-    out.append("    <!-- ===== 12 块圆形铁片（静态；类型见 sim_layout.yaml materials.types）===== -->\n")
+    out = [HEADER, rack_model(layout), place_table(layout)]
+    out.append("    <!-- ===== 12 块圆形铁片（动态；类型见 sim_layout.yaml materials.types）===== -->\n")
     for s, t in zip(slots, types):
         out.append(plate_model(layout, s, t))
 
-    out.append(
-        "    <!-- 三轴龙门（关节零位 = 相机在货架中心正上方、末端最高位） -->\n"
-        "    <include>\n"
-        "      <uri>model://aic_gantry</uri>\n"
-        "      <name>aic_gantry</name>\n"
-        "      <pose>0 0 0 0 0 0</pose>\n"
-        "    </include>\n"
-        "  </world>\n"
-        "</sdf>\n")
+    out.append("  <!-- 三轴龙门（关节零位 = 相机在货架中心正上方、末端最高位） -->\n")
+    out.append(gantry_model(layout, types, slots))
+    out.append("  </world>\n</sdf>\n")
     return "".join(out), types
 
 

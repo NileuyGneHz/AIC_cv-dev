@@ -50,11 +50,31 @@ CAMERA_TOPICS = [
 ]
 
 
+def grip_topics(n_slots):
+    """抓取/释放信号桥：每块铁片一对，话题名与 gen_world.py 生成的 DetachableJoint 一致。
+
+    坑：DetachableJoint 是「一个插件绑一个 child」，不能所有铁片共用一条话题
+    （那样一按就 12 块全吸附）。所以这里是 2*N 条，按 slot 号编号。
+    """
+    out = []
+    for i in range(1, int(n_slots) + 1):
+        # 编号直接接词尾：ROS 话题名不允许「以数字开头的 token」（/sim/attach/01 非法）
+        out.append("/sim/attach_{:02d}@std_msgs/msg/Empty]ignition.msgs.Empty".format(i))
+        out.append("/sim/detach_{:02d}@std_msgs/msg/Empty]ignition.msgs.Empty".format(i))
+    return out
+
+
 def generate_launch_description():
     share = get_package_share_directory("aic_gazebo_sim")
     world_path = os.path.join(share, "worlds", "aic_warehouse.sdf")
     layout_path = os.path.join(share, "config", "sim_layout.yaml")
     models_path = os.path.join(share, "models")
+
+    # 抓取信号桥的条数由布局决定（cols * rows），不写死 12
+    import yaml
+    with open(layout_path, "r", encoding="utf-8") as f:
+        _layout = yaml.safe_load(f)
+    n_slots = int(_layout["rack"]["cols"]) * int(_layout["rack"]["rows"])
 
     gui = LaunchConfiguration("gui")
     bridge_camera = LaunchConfiguration("bridge_camera")
@@ -115,7 +135,7 @@ def generate_launch_description():
         # gz <-> ROS 2 桥
         Node(package="ros_gz_bridge", executable="parameter_bridge",
              name="gz_bridge", output="screen",
-             arguments=BRIDGE_TOPICS),
+             arguments=BRIDGE_TOPICS + grip_topics(n_slots)),
         Node(package="ros_gz_bridge", executable="parameter_bridge",
              name="gz_camera_bridge", output="screen",
              condition=IfCondition(bridge_camera),

@@ -53,11 +53,17 @@ def generate_launch_description():
         DeclareLaunchArgument("invalid_rate", default_value="0.0",
                               description="视觉桩返回非法值（\"9\"）的概率"),
         # 坑：WaitVisionResult 的窗口是「GOTO 下发」那一刻开始计时的，不是「到位」开始。
-        #     而控制器是 FIFO —— GOTO(N+1) 下发时，队列里通常还压着上一个位点的 HANDLE
-        #     （降 Z + 停留 + 升 Z，实测约 1.1 s），再加上 GOTO 自身约 1.3 s 与视觉 0.2 s，
-        #     3.0 s 必然不够：实测每轮有 3~4 个位点 TIMEOUT，而且迟到的结果会被
-        #     下一个位点当成自己的答案收下（类型错位）。窗口必须覆盖「HANDLE + GOTO + 视觉」。
-        DeclareLaunchArgument("vision_timeout_s", default_value="5.0",
+        #     而控制器是 FIFO —— GOTO(N+1) 下发时，队列里还压着上一个位点的 HANDLE。
+        #     窗口必须覆盖「HANDLE + GOTO + 视觉延迟」：
+        #       只做「下探-抬升」的 HANDLE ≈ 1.1 s -> 3.0 就够但已经很紧
+        #       加上「搬到码放格 + 放下」（M2）后 HANDLE ≈ 4.3 s，GOTO ≈ 1.5 s -> 5.0 不够
+        #     实测（M2 完整搬运，真视觉 12 位点）：成功位点的等待时长落在 5.6~7.9 s，
+        #     8.0 只剩 0.1 s 余量，于是 12 位点里稳定丢 3 个（6/10/12）。给到 12.0。
+        #     窗口偏小的后果不只是「慢」，更是**迟到的结果被下一个位点误收**
+        #     （类型错位，结果表还显示 OK）。所以这里留足余量。
+        #     代价：真失败时要空等 12 s。真机 HANDLE 不含搬运（夹爪一开一合），
+        #     实际参数应以真机节拍重定，这里只是仿真侧的自验配置。
+        DeclareLaunchArgument("vision_timeout_s", default_value="12.0",
                               description="单个位点等识别结果的上限（须 > HANDLE + GOTO + 视觉延迟）"),
         DeclareLaunchArgument("vision_backend", default_value="gt",
                               description="gt = ground-truth 桩；trad = 传统视觉（看相机图）"),

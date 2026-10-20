@@ -29,6 +29,7 @@ class SimLayout:
         self.rack = doc["rack"]
         self.plate = doc["plate"]
         self.gantry = doc.get("gantry", {})
+        self.place = doc.get("place_zones", {})
         self.types = [int(t) for t in doc.get("materials", {}).get("types", [])]
 
     @classmethod
@@ -65,6 +66,17 @@ class SimLayout:
         if 0 <= idx < len(self.types):
             return self.types[idx]
         return 0
+
+    def place_xy(self, mtype):
+        """缺陷类型 1..4 -> 码放格的格心 (x, y)；未配置时返回 None。
+
+        码放条在 +Y 侧，4 格沿 +X 排列，顺序与类型号一致（见 place_zones.xs）。
+        """
+        xs = self.place.get("xs") or []
+        idx = int(mtype) - 1
+        if not 0 <= idx < len(xs):
+            return None
+        return float(xs[idx]), float(self.place["y"])
 
     def summary(self):
         return "frame={} cols={} rows={} pitch=({}, {}) types={}".format(

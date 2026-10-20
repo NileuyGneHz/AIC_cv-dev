@@ -33,9 +33,13 @@
   pos_tol/vel_tol   到位阈值（默认取 sim_layout.yaml 的 gantry 段）
   settle_s          0.15 s（仅在拿不到关节反馈时退化成定时等待）
   handle_dwell_s    0.35 s（抓取停留，夹爪动作占位）
+  release_rounds    4（开机广播几轮 detach，把 12 块铁片从 z_carriage 上放开）
+  release_interval_s 0.4 s
+  place_tol         0.015 m（放到码放格时允许的「触底静差」，来自同类型叠放）
 """
 import collections
 import math
+import time
 
 import rclpy
 from rclpy.node import Node
@@ -47,9 +51,10 @@ from aic_msgs.msg import MaterialTask
 from sim_layout import SimLayout, declare_number
 
 # 关节软限位，与 models/aic_gantry/model.sdf 的 <limit> 保持一致
+# y 上限 0.32 = 横梁能到达 +Y 码放条（place_zones.y = 0.30）
 LIMITS = {
     "x": (-0.45, 0.45),
-    "y": (-0.24, 0.24),
+    "y": (-0.24, 0.32),
     "z": (-0.42, 0.0),
 }
 AXES = ("x", "y", "z")
@@ -103,6 +108,9 @@ class GantryController(Node):
         self.pos_tol = declare_number(self, "pos_tol", float(self.layout.gantry.get("pos_tol", 0.003)))
         self.vel_tol = declare_number(self, "vel_tol", float(self.layout.gantry.get("vel_tol", 0.010)))
         self.confirm_ticks = int(declare_number(self, "confirm_ticks", 4))
+        # place 步（放到码放格）的「触底」判据：落点会叠放，允许几毫米静差
+        self.place_tol = declare_number(self, "place_tol", 0.015)
+        self.place_vel_tol = declare_number(self, "place_vel_tol", 0.003)
         self.move_timeout_s = declare_number(
             self, "move_timeout_s", float(self.layout.gantry.get("move_timeout_s", 8.0)))
         rate = declare_number(self, "control_rate_hz", 50.0)
@@ -110,6 +118,15 @@ class GantryController(Node):
 
         self.pub = {a: self.create_publisher(Float64, "/aic/joint/{}/cmd_pos".format(a), 10)
                     for a in AXES}
+        # 抓取/释放信号：每块铁片一个 DetachableJoint 话题（由 gen_world.py 生成插件时定名）。
+        # 都是 std_msgs/Empty，经 ros_gz_bridge 转成 ignition.msgs.Empty。
+        # 坑：话题名不能带「以数字开头的 token」——/sim/attach/01 会被 rclpy 拒
+        #     （InvalidTopicNameException，节点启动即崩），所以编号直接接在词尾。
+        n_slots = self.layout.cols * self.layout.rows
+        self.attach_pub = {i: self.create_publisher(Empty, "/sim/attach_{:02d}".format(i), 10)
+                           for i in range(1, n_slots + 1)}
+        self.detach_pub = {i: self.create_publisher(Empty, "/sim/detach_{:02d}".format(i), 10)
+                           for i in range(1, n_slots + 1)}
         self.arrived_pub = self.create_publisher(UInt8, arrived_topic, 10)
         self.handled_pub = self.create_publisher(UInt8, handled_topic, 10)
         # 到位即发采集请求：真视觉节点（aic_vision_trad）订阅这条，与决策侧接口约定一致
@@ -120,11 +137,10 @@ class GantryController(Node):
 
         # 就绪握手：decision 侧 control_wait_ready=true 时等这条 true 才开跑。
         # 必须周期重发——决策端是 volatile 订阅，只发一次会被后启动的节点错过。
+        # 注意：首次发送放在状态初始化之后（_publish_ready 依赖 _release_done/_t0）。
         ready_topic = self.declare_parameter("ready_topic", "/control/ready").value
         qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.ready_pub = self.create_publisher(Bool, ready_topic, qos)
-        self._publish_ready()
-        self.create_timer(1.0, self._publish_ready)
 
         # 理论位置（我们自己的 setpoint 账本）
         self.pos = {"x": 0.0, "y": 0.0, "z": 0.0}
@@ -136,6 +152,30 @@ class GantryController(Node):
         self.active = None                 # 正在执行的 move/dwell
         self.busy = False
 
+        # 开机松爪：DetachableJoint 在首次 PreUpdate 就把 child 焊到 parent_link 上
+        # （Fortress 版没有 initial_attach 之类的开关，实测插件只认 parent_link /
+        #  child_model / child_link / attach_topic / detach_topic / output_topic 六个字段）。
+        # 12 个插件 = 12 块铁片一开始全挂在 z_carriage 上：静置 z 被压到 -3.675 mm，
+        # 正好等于 12*0.05kg*9.81 / p_gain(1600)，且速度恒为 0 —— 闭环判据永远等不到。
+        # 对策：开机后广播几轮 detach 把它们放回台面。
+        # 两条约束：
+        #   1) 通知 /control/ready 必须等松爪跑完再发。实测决策端在控制器启动后
+        #      0.02 s 就发来第一条 GOTO，若只按「收到任务就停发」来保护，松爪会被
+        #      永久跳过 —— 12 块铁片继续焊在 z_carriage 上，Z 轴 8 s 只走 0.2 mm
+        #      （日志：目标 -0.04 / 实际 -0.0002 / 误差 39.8 mm）。
+        #      而「松爪要不要开始」用第一帧 joint_state 判定：它同时证明
+        #      ros_gz_bridge 已经起来、ROS->GZ 方向的 24 个 gz 订阅也已建好
+        #      （否则 detach 消息全丢）。兜底：等 release_wait_s 还没反馈也照发。
+        #   2) 松爪轮次跳过 _held_slot，防止把刚夹起的料中途放掉。
+        self._release_left = int(declare_number(self, "release_rounds", 4))
+        self._release_period = declare_number(self, "release_interval_s", 0.4)
+        self._release_wait_s = declare_number(self, "release_wait_s", 3.0)
+        self._release_next = 0.0     # time.monotonic() 到期时间；0 = 立刻
+        self._release_done = False
+        self._t0 = time.monotonic()
+        # 当前夹着的槽位；松爪轮次跳过它，防止把刚夹起的料中途放掉
+        self._held_slot = 0
+
         # 关节反馈订阅。桥在 sim.launch.py 里（ignition.msgs.Model -> sensor_msgs/JointState）。
         # QoS 用 BEST_EFFORT：gz 侧按 sensor data 发，reliable 订阅者会「静默收不到」。
         js_topic = self.declare_parameter(
@@ -144,6 +184,9 @@ class GantryController(Node):
         self.create_subscription(JointState, js_topic, self._on_joint_state, js_qos)
 
         self.create_timer(self.dt, self._tick)
+        # 现在就报一次 ready（若松爪还没跑完，_publish_ready 会自己压住，1 Hz 重试）
+        self._publish_ready()
+        self.create_timer(1.0, self._publish_ready)
         self._publish_all()
         self.get_logger().info(
             "[sim/control] 龙门控制就绪：topic='%s'，布局 %s" % (task_topic, self.layout.summary()))
@@ -158,9 +201,33 @@ class GantryController(Node):
                 self.vel[axis] = float(vel)
 
     def _publish_ready(self):
+        # 等开机松爪跑完再报 ready（原因见 __init__ 里的注释）。10 s 硬兜底：
+        # 万一关节反馈一直不来，也不能把决策端卡死（bt_runner 的等待上限也是 10 s）。
+        if not self._release_done and time.monotonic() - self._t0 < 10.0:
+            return
         msg = Bool()
         msg.data = True
         self.ready_pub.publish(msg)
+
+    def _maybe_release(self):
+        """开机把全部 DetachableJoint 松开（原因见 __init__ 里的注释）。"""
+        if self._release_done:
+            return
+        now = time.monotonic()
+        if self.actual["x"] is None and (now - self._t0) < self._release_wait_s:
+            return                      # 桥还没通，发了也是白发
+        if self._release_next and now < self._release_next:
+            return
+        self._release_next = now + self._release_period
+        self._release_left -= 1
+        for slot, pub in self.detach_pub.items():
+            if slot != self._held_slot:
+                pub.publish(Empty())
+        if self._release_left <= 0:
+            self._release_done = True
+            self.get_logger().info("[sim/control] 开机松爪完成：%d 块铁片已全部释放" %
+                                   len(self.detach_pub))
+            self._publish_ready()      # 别等 1 Hz 那拍，立刻放行决策端
 
     def _on_task(self, msg):
         action = (msg.action or "").strip().upper()
@@ -173,7 +240,7 @@ class GantryController(Node):
         if action == "GOTO":
             self.queue.append(self._goto_steps(slot))
         elif action == "HANDLE":
-            self.queue.append(self._handle_steps(slot))
+            self.queue.append(self._handle_steps(slot, kind))
         elif action == "HOME":
             self.queue.append(self._home_steps())
         else:
@@ -189,13 +256,39 @@ class GantryController(Node):
         steps.append(_Step("event", name="arrived", slot=slot))
         return steps
 
-    def _handle_steps(self, slot):
-        return [
+    def _handle_steps(self, slot, mtype):
+        """抓取 -> 抬升 -> 搬到该类型的码放格 -> 放下 -> 松爪 -> 抬升。
+
+        类型未知（0）或没配码放格时退化成「下探 + 停留 + 抬升」，不抓取，
+        对应决策侧 SkipSlot 的语义（未识别不放料）。
+        """
+        zone = self.layout.place_xy(mtype)
+        steps = [
             _Step("move", targets={"z": self.pick_z}, speed=self.z_speed),
             _Step("dwell", seconds=self.dwell_s),
+        ]
+        if zone is None:
+            steps.append(_Step("move", targets={"z": self.travel_z}, speed=self.z_speed))
+            steps.append(_Step("event", name="handled", slot=slot))
+            return steps
+        self.get_logger().info(
+            "[sim/control] slot %d type=%d -> 码放格 (%.3f, %.3f)"
+            % (slot, int(mtype), zone[0], zone[1]))
+        steps += [
+            _Step("signal", name="attach", slot=slot),
+            _Step("move", targets={"z": self.travel_z}, speed=self.z_speed),
+            _Step("move", targets={"x": zone[0], "y": zone[1]}, speed=self.xy_speed),
+            # 放下用 place 而不是 move：同类型铁片会落到同一个格子里叠起来，第二块
+            # 必然比目标高一个片厚（6 mm），按「精确到位」判会一直等到 move_timeout_s
+            # （实测白等 8 s，还把下一个位点的视觉窗口挤爆，连锁出现 3 个 TIMEOUT）。
+            # place 的判据是「已触底」：位置不再变化 + 残余误差在 place_tol 内。
+            _Step("place", targets={"z": self.pick_z}, speed=self.z_speed),
+            _Step("dwell", seconds=self.dwell_s),
+            _Step("signal", name="detach", slot=slot),
             _Step("move", targets={"z": self.travel_z}, speed=self.z_speed),
             _Step("event", name="handled", slot=slot),
         ]
+        return steps
 
     def _home_steps(self):
         return [
@@ -216,6 +309,7 @@ class GantryController(Node):
             self._publish(axis)
 
     def _tick(self):
+        self._maybe_release()
         if self.active is None:
             if not self.steps:
                 if not self.queue:
@@ -234,7 +328,7 @@ class GantryController(Node):
     def _start_next(self):
         while self.steps and self.active is None:
             step = self.steps.popleft()
-            if step.kind == "event":
+            if step.kind in ("event", "signal"):
                 self._emit(step)
                 continue
             self.active = step
@@ -300,21 +394,53 @@ class GantryController(Node):
                 % ({a: round(v, 4) for a, v in self.pos.items()}, detail, step.hold_s))
             self.active = None
             return
+        # place 步：触底即算完成。allowed 的静差只来自「铁片叠放」，
+        # 不能给太大，否则会把「压不下去」误判成「已放下」。
+        if step.kind == "place" and step.hold_s >= 0.30 and self._touched_down(step):
+            self.get_logger().info(
+                "[sim/control] 已触底 %s（%s，剖面后 %.2f s）"
+                % ({a: round(v, 4) for a, v in step.targets.items()},
+                   self._place_detail(step), step.hold_s))
+            self.active = None
+            return
         if step.hold_s >= self.move_timeout_s:
             self.get_logger().warn(
-                "[sim/control] 到位超时 %.1f s（%s），按到位继续"
-                % (step.hold_s, detail))
+                "[sim/control] 到位超时 %.1f s（%s），按到位继续；目标 %s 实际 %s"
+                % (step.hold_s, detail,
+                   {a: round(v, 4) for a, v in step.targets.items()},
+                   {a: (None if self.actual[a] is None else round(self.actual[a], 4))
+                    for a in step.targets}))
             self.active = None
 
-    def _converged(self, step):
-        """判断 step.targets 里的轴是否已真正停稳。返回 (bool, 说明)。"""
-        if any(self.actual[a] is None for a in AXES):
-            return step.hold_s >= self.settle_s, "无关节反馈，按 %.2f s 定时等待" % self.settle_s
+    def _axis_error(self, step):
+        """step.targets 里各轴的最大位置误差与最大残余速度（米 / 米每秒）。"""
         worst_pos = 0.0
         worst_vel = 0.0
         for a in step.targets:
             worst_pos = max(worst_pos, abs(self.actual[a] - step.targets[a]))
             worst_vel = max(worst_vel, abs(self.vel[a]))
+        return worst_pos, worst_vel
+
+    def _touched_down(self, step):
+        """place 步是否已触底：位置压在目标下方一点点且不再动。
+
+        判定要同时看「速度接近 0」和「误差在 place_tol 内」：
+        只看误差会把「正常下探途中恰好经过该区间」当成触底。
+        """
+        if any(self.actual[a] is None for a in AXES):
+            return False
+        worst_pos, worst_vel = self._axis_error(step)
+        return worst_pos <= self.place_tol and worst_vel <= self.place_vel_tol
+
+    def _place_detail(self, step):
+        worst_pos, worst_vel = self._axis_error(step)
+        return "静差 %.1f mm，残余速度 %.1f mm/s" % (worst_pos * 1000.0, worst_vel * 1000.0)
+
+    def _converged(self, step):
+        """判断 step.targets 里的轴是否已真正停稳。返回 (bool, 说明)。"""
+        if any(self.actual[a] is None for a in AXES):
+            return step.hold_s >= self.settle_s, "无关节反馈，按 %.2f s 定时等待" % self.settle_s
+        worst_pos, worst_vel = self._axis_error(step)
         return (worst_pos <= self.pos_tol and worst_vel <= self.vel_tol,
                 "最大误差 %.1f mm，最大速度 %.1f mm/s"
                 % (worst_pos * 1000.0, worst_vel * 1000.0))
@@ -325,7 +451,16 @@ class GantryController(Node):
         self.pub[axis].publish(msg)
 
     def _emit(self, step):
-        if step.name == "arrived":
+        if step.name == "attach":
+            self._held_slot = int(step.slot)   # 先记账再发，避免松爪轮次抢跑
+            self.attach_pub[int(step.slot)].publish(Empty())
+            self.get_logger().info("[sim/control] slot %d 夹持（DetachableJoint attach）" % step.slot)
+        elif step.name == "detach":
+            self.detach_pub[int(step.slot)].publish(Empty())
+            if self._held_slot == int(step.slot):
+                self._held_slot = 0
+            self.get_logger().info("[sim/control] slot %d 释放（DetachableJoint detach）" % step.slot)
+        elif step.name == "arrived":
             msg = UInt8()
             msg.data = int(step.slot)
             self.arrived_pub.publish(msg)

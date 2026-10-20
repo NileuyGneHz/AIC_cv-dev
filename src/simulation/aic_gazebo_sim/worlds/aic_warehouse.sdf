@@ -89,6 +89,7 @@
           </material>
         </visual>
         <collision name="deck_col">
+          <pose>0 0 0.09000000000000001 0 0 0</pose>
           <geometry><box><size>1.02 0.5201 0.02</size></box></geometry>
         </collision>
         <visual name="tile_1">
@@ -212,11 +213,142 @@
       </link>
     </model>
 
-    <!-- ===== 12 块圆形铁片（静态；类型见 sim_layout.yaml materials.types）===== -->
-    <model name="material_01_scratch">
+    <!-- 分类码放条（899 x 139 mm，上表面 z=0.1） -->
+    <model name="place_table">
       <static>true</static>
-      <pose>-0.3750 -0.1667 0.1060 0 0 0</pose>
+      <link name="deck">
+        <visual name="deck">
+          <pose>0 0.3000 0.0900 0 0 0</pose>
+          <geometry><box><size>0.8999999999999999 0.13999999999999999 0.02</size></box></geometry>
+          <material>
+            <ambient>0.55 0.56 0.58 1</ambient>
+            <diffuse>0.62 0.63 0.65 1</diffuse>
+            <specular>0.0 0.0 0.0 1</specular>
+          </material>
+        </visual>
+        <collision name="deck_col">
+          <pose>0 0.3000 0.0900 0 0 0</pose>
+          <geometry><box><size>0.8999999999999999 0.13999999999999999 0.02</size></box></geometry>
+        </collision>
+        <visual name="zone_1">
+          <pose>-0.3600 0.3000 0.1010 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.002</size></box></geometry>
+          <material><ambient>0.28 0.30 0.33 1</ambient><diffuse>0.34 0.36 0.39 1</diffuse></material>
+        </visual>
+        <visual name="z1_rim_xa">
+          <pose>-0.3600 0.2400 0.1060 0 0 0</pose>
+          <geometry><box><size>0.12 0.006 0.012</size></box></geometry>
+          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
+        </visual>
+        <visual name="z1_rim_xb">
+          <pose>-0.3600 0.3600 0.1060 0 0 0</pose>
+          <geometry><box><size>0.12 0.006 0.012</size></box></geometry>
+          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
+        </visual>
+        <visual name="z1_rim_ya">
+          <pose>-0.4200 0.3000 0.1060 0 0 0</pose>
+          <geometry><box><size>0.006 0.12 0.012</size></box></geometry>
+          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
+        </visual>
+        <visual name="z1_rim_yb">
+          <pose>-0.3000 0.3000 0.1060 0 0 0</pose>
+          <geometry><box><size>0.006 0.12 0.012</size></box></geometry>
+          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
+        </visual>
+        <visual name="zone_2">
+          <pose>-0.1200 0.3000 0.1010 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.002</size></box></geometry>
+          <material><ambient>0.28 0.30 0.33 1</ambient><diffuse>0.34 0.36 0.39 1</diffuse></material>
+        </visual>
+        <visual name="z2_rim_xa">
+          <pose>-0.1200 0.2400 0.1060 0 0 0</pose>
+          <geometry><box><size>0.12 0.006 0.012</size></box></geometry>
+          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
+        </visual>
+        <visual name="z2_rim_xb">
+          <pose>-0.1200 0.3600 0.1060 0 0 0</pose>
+          <geometry><box><size>0.12 0.006 0.012</size></box></geometry>
+          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
+        </visual>
+        <visual name="z2_rim_ya">
+          <pose>-0.1800 0.3000 0.1060 0 0 0</pose>
+          <geometry><box><size>0.006 0.12 0.012</size></box></geometry>
+          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
+        </visual>
+        <visual name="z2_rim_yb">
+          <pose>-0.0600 0.3000 0.1060 0 0 0</pose>
+          <geometry><box><size>0.006 0.12 0.012</size></box></geometry>
+          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
+        </visual>
+        <visual name="zone_3">
+          <pose>0.1200 0.3000 0.1010 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.002</size></box></geometry>
+          <material><ambient>0.28 0.30 0.33 1</ambient><diffuse>0.34 0.36 0.39 1</diffuse></material>
+        </visual>
+        <visual name="z3_rim_xa">
+          <pose>0.1200 0.2400 0.1060 0 0 0</pose>
+          <geometry><box><size>0.12 0.006 0.012</size></box></geometry>
+          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
+        </visual>
+        <visual name="z3_rim_xb">
+          <pose>0.1200 0.3600 0.1060 0 0 0</pose>
+          <geometry><box><size>0.12 0.006 0.012</size></box></geometry>
+          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
+        </visual>
+        <visual name="z3_rim_ya">
+          <pose>0.0600 0.3000 0.1060 0 0 0</pose>
+          <geometry><box><size>0.006 0.12 0.012</size></box></geometry>
+          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
+        </visual>
+        <visual name="z3_rim_yb">
+          <pose>0.1800 0.3000 0.1060 0 0 0</pose>
+          <geometry><box><size>0.006 0.12 0.012</size></box></geometry>
+          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
+        </visual>
+        <visual name="zone_4">
+          <pose>0.3600 0.3000 0.1010 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.002</size></box></geometry>
+          <material><ambient>0.28 0.30 0.33 1</ambient><diffuse>0.34 0.36 0.39 1</diffuse></material>
+        </visual>
+        <visual name="z4_rim_xa">
+          <pose>0.3600 0.2400 0.1060 0 0 0</pose>
+          <geometry><box><size>0.12 0.006 0.012</size></box></geometry>
+          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
+        </visual>
+        <visual name="z4_rim_xb">
+          <pose>0.3600 0.3600 0.1060 0 0 0</pose>
+          <geometry><box><size>0.12 0.006 0.012</size></box></geometry>
+          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
+        </visual>
+        <visual name="z4_rim_ya">
+          <pose>0.3000 0.3000 0.1060 0 0 0</pose>
+          <geometry><box><size>0.006 0.12 0.012</size></box></geometry>
+          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
+        </visual>
+        <visual name="z4_rim_yb">
+          <pose>0.4200 0.3000 0.1060 0 0 0</pose>
+          <geometry><box><size>0.006 0.12 0.012</size></box></geometry>
+          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ===== 12 块圆形铁片（动态；类型见 sim_layout.yaml materials.types）===== -->
+    <model name="material_01_scratch">
+      <static>false</static>
+      <pose>-0.3750 -0.1667 0.1032 0 0 0</pose>
       <link name="disc">
+        <inertial>
+          <mass>0.05</mass>
+          <inertia>
+            <ixx>2.015e-05</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>2.015e-05</iyy><iyz>0</iyz><izz>4e-05</izz>
+          </inertia>
+        </inertial>
+        <collision name="disc_col">
+          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
+        </collision>
         <visual name="disc">
           <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
           <material>
@@ -234,9 +366,20 @@
     </model>
 
     <model name="material_02_chip">
-      <static>true</static>
-      <pose>-0.1250 -0.1667 0.1060 0 0 0</pose>
+      <static>false</static>
+      <pose>-0.1250 -0.1667 0.1032 0 0 0</pose>
       <link name="disc">
+        <inertial>
+          <mass>0.05</mass>
+          <inertia>
+            <ixx>2.015e-05</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>2.015e-05</iyy><iyz>0</iyz><izz>4e-05</izz>
+          </inertia>
+        </inertial>
+        <collision name="disc_col">
+          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
+        </collision>
         <visual name="disc">
           <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
           <material>
@@ -254,9 +397,20 @@
     </model>
 
     <model name="material_03_stain">
-      <static>true</static>
-      <pose>0.1250 -0.1667 0.1060 0 0 0</pose>
+      <static>false</static>
+      <pose>0.1250 -0.1667 0.1032 0 0 0</pose>
       <link name="disc">
+        <inertial>
+          <mass>0.05</mass>
+          <inertia>
+            <ixx>2.015e-05</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>2.015e-05</iyy><iyz>0</iyz><izz>4e-05</izz>
+          </inertia>
+        </inertial>
+        <collision name="disc_col">
+          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
+        </collision>
         <visual name="disc">
           <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
           <material>
@@ -274,9 +428,20 @@
     </model>
 
     <model name="material_04_hole">
-      <static>true</static>
-      <pose>0.3750 -0.1667 0.1060 0 0 0</pose>
+      <static>false</static>
+      <pose>0.3750 -0.1667 0.1032 0 0 0</pose>
       <link name="disc">
+        <inertial>
+          <mass>0.05</mass>
+          <inertia>
+            <ixx>2.015e-05</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>2.015e-05</iyy><iyz>0</iyz><izz>4e-05</izz>
+          </inertia>
+        </inertial>
+        <collision name="disc_col">
+          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
+        </collision>
         <visual name="disc">
           <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
           <material>
@@ -294,9 +459,20 @@
     </model>
 
     <model name="material_05_stain">
-      <static>true</static>
-      <pose>-0.3750 0.0000 0.1060 0 0 0</pose>
+      <static>false</static>
+      <pose>-0.3750 0.0000 0.1032 0 0 0</pose>
       <link name="disc">
+        <inertial>
+          <mass>0.05</mass>
+          <inertia>
+            <ixx>2.015e-05</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>2.015e-05</iyy><iyz>0</iyz><izz>4e-05</izz>
+          </inertia>
+        </inertial>
+        <collision name="disc_col">
+          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
+        </collision>
         <visual name="disc">
           <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
           <material>
@@ -314,9 +490,20 @@
     </model>
 
     <model name="material_06_scratch">
-      <static>true</static>
-      <pose>-0.1250 0.0000 0.1060 0 0 0</pose>
+      <static>false</static>
+      <pose>-0.1250 0.0000 0.1032 0 0 0</pose>
       <link name="disc">
+        <inertial>
+          <mass>0.05</mass>
+          <inertia>
+            <ixx>2.015e-05</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>2.015e-05</iyy><iyz>0</iyz><izz>4e-05</izz>
+          </inertia>
+        </inertial>
+        <collision name="disc_col">
+          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
+        </collision>
         <visual name="disc">
           <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
           <material>
@@ -334,9 +521,20 @@
     </model>
 
     <model name="material_07_hole">
-      <static>true</static>
-      <pose>0.1250 0.0000 0.1060 0 0 0</pose>
+      <static>false</static>
+      <pose>0.1250 0.0000 0.1032 0 0 0</pose>
       <link name="disc">
+        <inertial>
+          <mass>0.05</mass>
+          <inertia>
+            <ixx>2.015e-05</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>2.015e-05</iyy><iyz>0</iyz><izz>4e-05</izz>
+          </inertia>
+        </inertial>
+        <collision name="disc_col">
+          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
+        </collision>
         <visual name="disc">
           <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
           <material>
@@ -354,9 +552,20 @@
     </model>
 
     <model name="material_08_chip">
-      <static>true</static>
-      <pose>0.3750 0.0000 0.1060 0 0 0</pose>
+      <static>false</static>
+      <pose>0.3750 0.0000 0.1032 0 0 0</pose>
       <link name="disc">
+        <inertial>
+          <mass>0.05</mass>
+          <inertia>
+            <ixx>2.015e-05</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>2.015e-05</iyy><iyz>0</iyz><izz>4e-05</izz>
+          </inertia>
+        </inertial>
+        <collision name="disc_col">
+          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
+        </collision>
         <visual name="disc">
           <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
           <material>
@@ -374,9 +583,20 @@
     </model>
 
     <model name="material_09_chip">
-      <static>true</static>
-      <pose>-0.3750 0.1667 0.1060 0 0 0</pose>
+      <static>false</static>
+      <pose>-0.3750 0.1667 0.1032 0 0 0</pose>
       <link name="disc">
+        <inertial>
+          <mass>0.05</mass>
+          <inertia>
+            <ixx>2.015e-05</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>2.015e-05</iyy><iyz>0</iyz><izz>4e-05</izz>
+          </inertia>
+        </inertial>
+        <collision name="disc_col">
+          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
+        </collision>
         <visual name="disc">
           <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
           <material>
@@ -394,9 +614,20 @@
     </model>
 
     <model name="material_10_scratch">
-      <static>true</static>
-      <pose>-0.1250 0.1667 0.1060 0 0 0</pose>
+      <static>false</static>
+      <pose>-0.1250 0.1667 0.1032 0 0 0</pose>
       <link name="disc">
+        <inertial>
+          <mass>0.05</mass>
+          <inertia>
+            <ixx>2.015e-05</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>2.015e-05</iyy><iyz>0</iyz><izz>4e-05</izz>
+          </inertia>
+        </inertial>
+        <collision name="disc_col">
+          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
+        </collision>
         <visual name="disc">
           <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
           <material>
@@ -414,9 +645,20 @@
     </model>
 
     <model name="material_11_stain">
-      <static>true</static>
-      <pose>0.1250 0.1667 0.1060 0 0 0</pose>
+      <static>false</static>
+      <pose>0.1250 0.1667 0.1032 0 0 0</pose>
       <link name="disc">
+        <inertial>
+          <mass>0.05</mass>
+          <inertia>
+            <ixx>2.015e-05</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>2.015e-05</iyy><iyz>0</iyz><izz>4e-05</izz>
+          </inertia>
+        </inertial>
+        <collision name="disc_col">
+          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
+        </collision>
         <visual name="disc">
           <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
           <material>
@@ -434,9 +676,20 @@
     </model>
 
     <model name="material_12_hole">
-      <static>true</static>
-      <pose>0.3750 0.1667 0.1060 0 0 0</pose>
+      <static>false</static>
+      <pose>0.3750 0.1667 0.1032 0 0 0</pose>
       <link name="disc">
+        <inertial>
+          <mass>0.05</mass>
+          <inertia>
+            <ixx>2.015e-05</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>2.015e-05</iyy><iyz>0</iyz><izz>4e-05</izz>
+          </inertia>
+        </inertial>
+        <collision name="disc_col">
+          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
+        </collision>
         <visual name="disc">
           <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
           <material>
@@ -453,11 +706,391 @@
       </link>
     </model>
 
-    <!-- 三轴龙门（关节零位 = 相机在货架中心正上方、末端最高位） -->
-    <include>
-      <uri>model://aic_gantry</uri>
-      <name>aic_gantry</name>
+  <!-- 三轴龙门（关节零位 = 相机在货架中心正上方、末端最高位） -->
+  <model name="aic_gantry">
+      <static>false</static>
       <pose>0 0 0 0 0 0</pose>
-    </include>
+
+      <!-- ============================== base：固定于世界 ============================== -->
+      <link name="base">
+        <inertial>
+          <mass>120.0</mass>
+          <inertia>
+            <ixx>20</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>20</iyy><iyz>0</iyz><izz>20</izz>
+          </inertia>
+        </inertial>
+
+        <!-- 四根立柱 -->
+        <visual name="post_fl">
+          <pose>0.50 -0.30 0.30 0 0 0</pose>
+          <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
+          <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.34 0.35 0.37 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular></material>
+        </visual>
+        <visual name="post_fr">
+          <pose>0.50 0.30 0.30 0 0 0</pose>
+          <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
+          <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.34 0.35 0.37 1</diffuse></material>
+        </visual>
+        <visual name="post_bl">
+          <pose>-0.50 -0.30 0.30 0 0 0</pose>
+          <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
+          <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.34 0.35 0.37 1</diffuse></material>
+        </visual>
+        <visual name="post_br">
+          <pose>-0.50 0.30 0.30 0 0 0</pose>
+          <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
+          <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.34 0.35 0.37 1</diffuse></material>
+        </visual>
+
+        <!-- 两条 X 向导轨 -->
+        <visual name="rail_front">
+          <pose>0 -0.30 0.585 0 0 0</pose>
+          <geometry><box><size>1.10 0.05 0.05</size></box></geometry>
+          <material><ambient>0.55 0.57 0.60 1</ambient><diffuse>0.62 0.64 0.67 1</diffuse>
+            <specular>0.4 0.4 0.4 1</specular></material>
+        </visual>
+        <visual name="rail_back">
+          <pose>0 0.30 0.585 0 0 0</pose>
+          <geometry><box><size>1.10 0.05 0.05</size></box></geometry>
+          <material><ambient>0.55 0.57 0.60 1</ambient><diffuse>0.62 0.64 0.67 1</diffuse></material>
+        </visual>
+
+        <collision name="post_fl_col">
+          <pose>0.50 -0.30 0.30 0 0 0</pose>
+          <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
+        </collision>
+        <collision name="post_fr_col">
+          <pose>0.50 0.30 0.30 0 0 0</pose>
+          <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
+        </collision>
+        <collision name="post_bl_col">
+          <pose>-0.50 -0.30 0.30 0 0 0</pose>
+          <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
+        </collision>
+        <collision name="post_br_col">
+          <pose>-0.50 0.30 0.30 0 0 0</pose>
+          <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
+        </collision>
+      </link>
+
+      <!-- ============================== X 横梁 ============================== -->
+      <link name="x_carriage">
+        <pose>0 0 0.585 0 0 0</pose>
+        <inertial>
+          <mass>6.0</mass>
+          <inertia>
+            <ixx>0.5</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>0.25</iyy><iyz>0</iyz><izz>0.5</izz>
+          </inertia>
+        </inertial>
+        <visual name="beam">
+          <geometry><box><size>0.06 0.72 0.06</size></box></geometry>
+          <material><ambient>0.45 0.47 0.50 1</ambient><diffuse>0.52 0.54 0.57 1</diffuse></material>
+        </visual>
+        <visual name="gusset_l">
+          <pose>-0.10 0 0.06 0 0 0</pose>
+          <geometry><box><size>0.08 0.06 0.06</size></box></geometry>
+          <material><ambient>0.40 0.42 0.45 1</ambient><diffuse>0.46 0.48 0.51 1</diffuse></material>
+        </visual>
+        <visual name="gusset_r">
+          <pose>0.10 0 0.06 0 0 0</pose>
+          <geometry><box><size>0.08 0.06 0.06</size></box></geometry>
+          <material><ambient>0.40 0.42 0.45 1</ambient><diffuse>0.46 0.48 0.51 1</diffuse></material>
+        </visual>
+        <collision name="beam_col">
+          <geometry><box><size>0.06 0.72 0.06</size></box></geometry>
+        </collision>
+      </link>
+
+      <!-- ============================== Y 小车 ============================== -->
+      <link name="y_carriage">
+        <pose>0 0 0.545 0 0 0</pose>
+        <inertial>
+          <mass>3.0</mass>
+          <inertia>
+            <ixx>0.02</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>0.02</iyy><iyz>0</iyz><izz>0.02</izz>
+          </inertia>
+        </inertial>
+        <visual name="body">
+          <geometry><box><size>0.10 0.10 0.05</size></box></geometry>
+          <material><ambient>0.20 0.45 0.65 1</ambient><diffuse>0.24 0.52 0.74 1</diffuse></material>
+        </visual>
+        <collision name="body_col">
+          <geometry><box><size>0.10 0.10 0.05</size></box></geometry>
+        </collision>
+      </link>
+
+      <!-- ============================== Z 轴 + 末端工具 + 相机 ============================== -->
+      <link name="z_carriage">
+        <pose>0 0 0.545 0 0 0</pose>
+        <!-- 关掉重力：Z 是竖直轴，位置控制器是速度伺服，上电初始化阶段会先被重力
+             拉到下限再爬回来（实测直接卡在下限）。仿真阶段不需要 Z 轴的自由落体，
+             关掉重力后位置保持完全由控制器负责。恢复真实重力时要配制动/前馈。 -->
+        <gravity>false</gravity>
+        <inertial>
+          <mass>2.0</mass>
+          <inertia>
+            <ixx>0.03</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>0.03</iyy><iyz>0</iyz><izz>0.01</izz>
+          </inertia>
+        </inertial>
+
+        <!-- Z 向立柱（刻意偏到 -X 侧：让出相机光路，否则相机会埋在立柱实体里） -->
+        <visual name="rod">
+          <pose>-0.075 0 -0.20 0 0 0</pose>
+          <geometry><box><size>0.045 0.045 0.40</size></box></geometry>
+          <material><ambient>0.72 0.74 0.76 1</ambient><diffuse>0.80 0.82 0.84 1</diffuse>
+            <specular>0.6 0.6 0.6 1</specular></material>
+        </visual>
+
+        <!-- 工具法兰：两根横条（中间留出相机光路） -->
+        <visual name="flange_bar_a">
+          <pose>-0.010 -0.055 -0.41 0 0 0</pose>
+          <geometry><box><size>0.18 0.02 0.02</size></box></geometry>
+          <material><ambient>0.35 0.36 0.38 1</ambient><diffuse>0.40 0.41 0.43 1</diffuse></material>
+        </visual>
+        <visual name="flange_bar_b">
+          <pose>-0.010 0.055 -0.41 0 0 0</pose>
+          <geometry><box><size>0.18 0.02 0.02</size></box></geometry>
+          <material><ambient>0.35 0.36 0.38 1</ambient><diffuse>0.40 0.41 0.43 1</diffuse></material>
+        </visual>
+
+        <!-- 夹指（沿 X 开合；z_joint=0 时底面 z=0.115 m） -->
+        <visual name="finger_l">
+          <pose>-0.036 0 -0.395 0 0 0</pose>
+          <geometry><box><size>0.012 0.05 0.03</size></box></geometry>
+          <material><ambient>0.85 0.55 0.10 1</ambient><diffuse>0.92 0.62 0.12 1</diffuse></material>
+        </visual>
+        <visual name="finger_r">
+          <pose>0.036 0 -0.395 0 0 0</pose>
+          <geometry><box><size>0.012 0.05 0.03</size></box></geometry>
+          <material><ambient>0.85 0.55 0.10 1</ambient><diffuse>0.92 0.62 0.12 1</diffuse></material>
+        </visual>
+
+        <!-- 相机：朝下（rpy pitch=+90° 把相机 +X 光轴转成世界 -Z） -->
+        <sensor name="camera" type="camera">
+          <pose>0 0 -0.18 0 1.5708 -1.5708</pose>
+          <always_on>1</always_on>
+          <visualize>false</visualize>
+          <update_rate>20</update_rate>
+          <topic>/camera/image</topic>
+          <camera>
+            <horizontal_fov>1.047</horizontal_fov>
+            <image>
+              <width>640</width>
+              <height>480</height>
+              <format>R8G8B8</format>
+            </image>
+            <clip>
+              <near>0.005</near>
+              <far>4.0</far>
+            </clip>
+          </camera>
+        </sensor>
+      </link>
+
+      <!-- ============================== 关节 ============================== -->
+      <joint name="x_joint" type="prismatic">
+        <parent>base</parent>
+        <child>x_carriage</child>
+        <axis>
+          <xyz>1 0 0</xyz>
+          <limit>
+            <lower>-0.45</lower>
+            <upper>0.45</upper>
+            <effort>300</effort>
+            <velocity>0.35</velocity>
+          </limit>
+          <dynamics><damping>20</damping><spring_stiffness>0</spring_stiffness></dynamics>
+        </axis>
+      </joint>
+
+      <joint name="y_joint" type="prismatic">
+        <parent>x_carriage</parent>
+        <child>y_carriage</child>
+        <axis>
+          <xyz>0 1 0</xyz>
+          <limit>
+            <lower>-0.24</lower>
+            <!-- 上限 0.24 -> 0.32：+Y 侧接了分类码放条（sim_layout.yaml place_zones）；
+                 横梁半长 0.36，够用，不需要加长横梁 -->
+            <upper>0.32</upper>
+            <effort>200</effort>
+            <velocity>0.30</velocity>
+          </limit>
+          <dynamics><damping>15</damping><spring_stiffness>0</spring_stiffness></dynamics>
+        </axis>
+      </joint>
+
+      <joint name="z_joint" type="prismatic">
+        <parent>y_carriage</parent>
+        <child>z_carriage</child>
+        <axis>
+          <xyz>0 0 1</xyz>
+          <limit>
+            <lower>-0.42</lower>
+            <upper>0.0</upper>
+            <effort>200</effort>
+            <velocity>0.15</velocity>
+          </limit>
+          <dynamics><damping>15</damping><spring_stiffness>0</spring_stiffness></dynamics>
+        </axis>
+      </joint>
+
+      <!-- 门架底座固定在世界（否则整体受重力下落） -->
+      <joint name="world_fix" type="fixed">
+        <parent>world</parent>
+        <child>base</child>
+      </joint>
+
+      <!-- ============================== 位置控制插件 ============================== -->
+      <!-- 关节状态回传：/world/aic_warehouse/model/aic_gantry/joint_state（ignition.msgs.Model） -->
+      <plugin filename="ignition-gazebo-joint-state-publisher-system"
+              name="ignition::gazebo::systems::JointStatePublisher">
+        <joint_name>x_joint</joint_name>
+        <joint_name>y_joint</joint_name>
+        <joint_name>z_joint</joint_name>
+      </plugin>
+
+      <!-- 增益：p=20/d=0.6 时（初版）伺服极慢——375 mm 阶跃要 4.8 s 才追上、过冲 17.7 mm、
+           8.6 s 才停稳，导致控制侧「剖面走完就报到位」时实际差一格。实测 p=1600/d=200：
+           过冲 0.5 mm、约 1.9 s 进 ±1 mm。三轴质量不同（x 6 kg / y 3 kg / z 2 kg），
+           统一用这组偏硬的参数对三轴都稳定（z 另有 gravity=false）。 -->
+      <!-- joint_index 是「该关节内部的自由度序号」，不是模型里第几个关节：
+           三个关节都是单自由度，因此全部填 0。写成 0/1/2 时只有 x 能动，
+           y/z 会因为越界静默失效（踩过）。 -->
+      <plugin filename="ignition-gazebo-joint-position-controller-system"
+              name="ignition::gazebo::systems::JointPositionController">
+        <joint_name>x_joint</joint_name>
+        <joint_index>0</joint_index>
+        <initial_position>0.0</initial_position>
+        <topic>/aic/joint/x/cmd_pos</topic>
+        <p_gain>1600</p_gain>
+        <i_gain>0.0</i_gain>
+        <d_gain>200</d_gain>
+      </plugin>
+
+      <plugin filename="ignition-gazebo-joint-position-controller-system"
+              name="ignition::gazebo::systems::JointPositionController">
+        <joint_name>y_joint</joint_name>
+        <joint_index>0</joint_index>
+        <initial_position>0.0</initial_position>
+        <topic>/aic/joint/y/cmd_pos</topic>
+        <p_gain>1600</p_gain>
+        <i_gain>0.0</i_gain>
+        <d_gain>200</d_gain>
+      </plugin>
+
+      <plugin filename="ignition-gazebo-joint-position-controller-system"
+              name="ignition::gazebo::systems::JointPositionController">
+        <joint_name>z_joint</joint_name>
+        <joint_index>0</joint_index>
+        <initial_position>0.0</initial_position>
+        <topic>/aic/joint/z/cmd_pos</topic>
+        <p_gain>1600</p_gain>
+        <i_gain>0.0</i_gain>
+        <d_gain>200</d_gain>
+      </plugin>
+        <plugin filename="ignition-gazebo-detachable-joint-system"
+              name="ignition::gazebo::systems::DetachableJoint">
+        <parent_link>z_carriage</parent_link>
+        <child_model>material_01_scratch</child_model>
+        <child_link>disc</child_link>
+        <attach_topic>/sim/attach_01</attach_topic>
+        <detach_topic>/sim/detach_01</detach_topic>
+      </plugin>
+      <plugin filename="ignition-gazebo-detachable-joint-system"
+              name="ignition::gazebo::systems::DetachableJoint">
+        <parent_link>z_carriage</parent_link>
+        <child_model>material_02_chip</child_model>
+        <child_link>disc</child_link>
+        <attach_topic>/sim/attach_02</attach_topic>
+        <detach_topic>/sim/detach_02</detach_topic>
+      </plugin>
+      <plugin filename="ignition-gazebo-detachable-joint-system"
+              name="ignition::gazebo::systems::DetachableJoint">
+        <parent_link>z_carriage</parent_link>
+        <child_model>material_03_stain</child_model>
+        <child_link>disc</child_link>
+        <attach_topic>/sim/attach_03</attach_topic>
+        <detach_topic>/sim/detach_03</detach_topic>
+      </plugin>
+      <plugin filename="ignition-gazebo-detachable-joint-system"
+              name="ignition::gazebo::systems::DetachableJoint">
+        <parent_link>z_carriage</parent_link>
+        <child_model>material_04_hole</child_model>
+        <child_link>disc</child_link>
+        <attach_topic>/sim/attach_04</attach_topic>
+        <detach_topic>/sim/detach_04</detach_topic>
+      </plugin>
+      <plugin filename="ignition-gazebo-detachable-joint-system"
+              name="ignition::gazebo::systems::DetachableJoint">
+        <parent_link>z_carriage</parent_link>
+        <child_model>material_05_stain</child_model>
+        <child_link>disc</child_link>
+        <attach_topic>/sim/attach_05</attach_topic>
+        <detach_topic>/sim/detach_05</detach_topic>
+      </plugin>
+      <plugin filename="ignition-gazebo-detachable-joint-system"
+              name="ignition::gazebo::systems::DetachableJoint">
+        <parent_link>z_carriage</parent_link>
+        <child_model>material_06_scratch</child_model>
+        <child_link>disc</child_link>
+        <attach_topic>/sim/attach_06</attach_topic>
+        <detach_topic>/sim/detach_06</detach_topic>
+      </plugin>
+      <plugin filename="ignition-gazebo-detachable-joint-system"
+              name="ignition::gazebo::systems::DetachableJoint">
+        <parent_link>z_carriage</parent_link>
+        <child_model>material_07_hole</child_model>
+        <child_link>disc</child_link>
+        <attach_topic>/sim/attach_07</attach_topic>
+        <detach_topic>/sim/detach_07</detach_topic>
+      </plugin>
+      <plugin filename="ignition-gazebo-detachable-joint-system"
+              name="ignition::gazebo::systems::DetachableJoint">
+        <parent_link>z_carriage</parent_link>
+        <child_model>material_08_chip</child_model>
+        <child_link>disc</child_link>
+        <attach_topic>/sim/attach_08</attach_topic>
+        <detach_topic>/sim/detach_08</detach_topic>
+      </plugin>
+      <plugin filename="ignition-gazebo-detachable-joint-system"
+              name="ignition::gazebo::systems::DetachableJoint">
+        <parent_link>z_carriage</parent_link>
+        <child_model>material_09_chip</child_model>
+        <child_link>disc</child_link>
+        <attach_topic>/sim/attach_09</attach_topic>
+        <detach_topic>/sim/detach_09</detach_topic>
+      </plugin>
+      <plugin filename="ignition-gazebo-detachable-joint-system"
+              name="ignition::gazebo::systems::DetachableJoint">
+        <parent_link>z_carriage</parent_link>
+        <child_model>material_10_scratch</child_model>
+        <child_link>disc</child_link>
+        <attach_topic>/sim/attach_10</attach_topic>
+        <detach_topic>/sim/detach_10</detach_topic>
+      </plugin>
+      <plugin filename="ignition-gazebo-detachable-joint-system"
+              name="ignition::gazebo::systems::DetachableJoint">
+        <parent_link>z_carriage</parent_link>
+        <child_model>material_11_stain</child_model>
+        <child_link>disc</child_link>
+        <attach_topic>/sim/attach_11</attach_topic>
+        <detach_topic>/sim/detach_11</detach_topic>
+      </plugin>
+      <plugin filename="ignition-gazebo-detachable-joint-system"
+              name="ignition::gazebo::systems::DetachableJoint">
+        <parent_link>z_carriage</parent_link>
+        <child_model>material_12_hole</child_model>
+        <child_link>disc</child_link>
+        <attach_topic>/sim/attach_12</attach_topic>
+        <detach_topic>/sim/detach_12</detach_topic>
+      </plugin>
+  </model>
+
   </world>
 </sdf>

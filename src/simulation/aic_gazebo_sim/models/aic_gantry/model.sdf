@@ -227,7 +227,9 @@
         <xyz>0 1 0</xyz>
         <limit>
           <lower>-0.24</lower>
-          <upper>0.24</upper>
+          <!-- 上限 0.24 -> 0.32：+Y 侧接了分类码放条（sim_layout.yaml place_zones）；
+               横梁半长 0.36，够用，不需要加长横梁 -->
+          <upper>0.32</upper>
           <effort>200</effort>
           <velocity>0.30</velocity>
         </limit>
