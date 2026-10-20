@@ -9,8 +9,11 @@ Team workspace conventions live in [AGENTS.md](AGENTS.md) (AI 助手入口) and
 
 - **decision 侧闭环已完成并自验通过**：vision 结果订阅 → 行为树分发 → control 任务下发，
   12 库位蛇形巡视（右下出发：`4,3,2,1 → 5,6,7,8 → 12,11,10,9`）。
-- **Gazebo 仿真（M1）已跑通**：12 库位货架 + 四类缺陷铁片 + 三轴龙门 + 俯视相机，
-  仿真版 control（关节反馈闭环到位）把整条闭环接上（一轮 12 位点全 OK，单点约 3 s）。
+- **Gazebo 仿真（M2）已跑通完整搬运**：12 库位货架 + 四类缺陷铁片（动态）+ 三轴龙门 +
+  俯视相机 + 4 个分类码放格。夹持用 `DetachableJoint`，HANDLE 走「下探 → 夹 → 抬 →
+  搬到该类型的格 → 触底放下 → 松 → 抬」。
+  真视觉一轮 **12/12 四类全对**，且 **12 块铁片全部落到对应类型的格子**
+  （每型 3 块叠放，层高差实测正好等于片厚 6 mm）。单点约 6.3 s，整轮约 80 s。
   详见 `docs/guides/simulation_guide.md`。
 - **传统视觉基线已可用**：`src/vision/aic_vision_trad` 读 `/camera/image`，
   仿真一轮 **12/12 四类全对**（`./scripts/run_sim.sh --vision trad`）。
@@ -51,14 +54,14 @@ src/
 ├── plugins/aic_msgs/              MaterialTask.msg（决策→control 任务契约）
 ├── decision/aic_warehouse/        3x4 货架模型：蛇形顺序生成 + gtest + print_path
 ├── decision/aic_behavior_tree/    决策核心：VisionClient / ControlBridge / 8 节点 / bt_runner
-├── simulation/aic_gazebo_sim/     Gazebo 场景（货架+铁片+三轴龙门）+ 控制/视觉仿真实现
+├── simulation/aic_gazebo_sim/     Gazebo 场景（货架+铁片+三轴龙门+码放格）+ 控制/视觉仿真实现
 ├── vision/aic_vision_trad/        传统视觉：盘面定位 + 四类缺陷判据（仿真 12/12）
 ├── control/  ...                  其余各域留位（见 AGENTS.md）
 docs/
 ├── guides/decision_vision_interface.md   vision ↔ decision 契约
 ├── guides/decision_control_interface.md  decision → control 契约（control 接入清单）
 ├── guides/decision_bt_architecture.md    行为树结构 / 黑板键 / 改树前必读的坑
-├── guides/simulation_guide.md            仿真：场景几何 / 话题 / 12 个坑 / M2 待办
+├── guides/simulation_guide.md            仿真：场景几何 / 话题 / 夹持搬运 / 17 个坑
 └── adr/0001-btcpp-decision-stack.md      选型记录
 config/  data/  docker/  tools/           留位
 ```
