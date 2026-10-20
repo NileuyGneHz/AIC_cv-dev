@@ -760,8 +760,18 @@ def main():
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
+    except RuntimeError as e:
+        # 坑（与 vision_node 同源）：SIGINT 后 rclpy 上下文已销毁，executor 仍去建 wait set，
+        # 抛 RCLError("the given context is not valid")。此时本轮判分早已完成，
+        # 不该让 launch 报「process has died [exit code 1]」伪装成故障。
+        if rclpy.ok():
+            raise
+        node.get_logger().info("[dashboard] 收到退出信号（%s），正常收敛" % e)
     finally:
-        node.dash.stop()
+        try:
+            node.dash.stop()
+        except Exception:                                          # noqa: BLE001
+            pass
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
