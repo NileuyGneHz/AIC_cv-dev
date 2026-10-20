@@ -68,6 +68,10 @@ class DetectorParams(object):
         self.refine_inlier_min = 0.45
         self.refine_max_dr = 0.12
         self.refine_max_resid = 1.5
+        # ---- 近黑核心（区分「孔洞」与「缺角」）----
+        # 孔是通透的，孔口像素接近黑；缺角只是表面缺了一块料，亮度跟其它缺陷同级。
+        # 实测（24 帧）：孔洞斑内 < level-120 的像素占 0.23~0.75，其余三类全是 0.000。
+        self.core_delta = 120.0
         for k, v in kw.items():
             if not hasattr(self, k):
                 raise AttributeError("未知参数: {}".format(k))
@@ -162,6 +166,9 @@ def extract_defects(gray, plate, p):
         circ = 4.0 * np.pi * area / (perim * perim) if perim > 0 else 0.0
         rw, rh = cv2.minAreaRect(cnt)[1]
         mean = float(gray[labels == i].mean())
+        # 近黑像素占比：只在这个连通域内统计（不看 bbox，免得把周围亮台面算进来）
+        comp_px = gray[labels == i]
+        core_frac = float((comp_px < level - p.core_delta).mean())
         comps.append({
             "area": area,
             "frac": area / plate_area,
@@ -170,6 +177,7 @@ def extract_defects(gray, plate, p):
             "rad": float(np.hypot(cents[i][0] - cx, cents[i][1] - cy) / r),
             "mean": mean,
             "drop": level - mean,
+            "core_frac": core_frac,
             # 外接框只给可视化用（make_atlas.py 画缺陷框）；判据不读它
             "bbox": cv2.boundingRect(cnt),
         })

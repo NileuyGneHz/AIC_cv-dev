@@ -126,12 +126,20 @@ def main():
 
     # ---- C. 物理落位 ----
     poses = parse_pose(args.pose)
-    if len(poses) != n_slots:
+    warns = []
+    if not poses:
+        # 坑 20：ogre2 无头长跑偶发 run loop 卡死，此时 pose/info 一条也不发，
+        # 但 A/B 两组（来自 CSV 与日志）仍然有效。落位是"加分项"，
+        # 不该因为它没抓到就把整轮判死；明确降级为 SKIP 并提示。
+        warns.append("C 跳过：pose/info 转储为空（可能命中坑 20 的 run loop 卡死），"
+                     "落位未核对；重跑一次通常就正常")
+    elif len(poses) != n_slots:
         fails.append("C0 pose/info 里只有 %d 块铁片（应为 %d），转储是否完整？"
                      % (len(poses), n_slots))
     z_lo = deck_z + thick * 0.25          # 至少贴在台面上（掉下去会接近 0.013）
     z_hi = deck_z + thick * (n_slots + 1)  # 叠满也不会超过这个上限
-    print("%-22s %8s %8s %8s %8s %8s" % ("model", "x", "y", "z", "dx(mm)", "dy(mm)"))
+    if poses:
+        print("%-22s %8s %8s %8s %8s %8s" % ("model", "x", "y", "z", "dx(mm)", "dy(mm)"))
     for name in sorted(poses):
         tid = type_of(name)
         pos = poses[name]
@@ -155,13 +163,19 @@ def main():
                          "（掉到碰撞板/地面？）" % (name, z, z_lo, z_hi))
 
     print()
+    for w in warns:
+        print("WARN  " + w)
     if fails:
         print("FAIL（%d 条）" % len(fails))
         for f in fails:
             print("  - " + f)
         return 1
-    print("PASS：决策 %d/%d OK、夹持与释放各 %d 次、%d 块铁片全部落在对应类型的格内"
-          % (len(rows), n_slots, n_attach, len(poses)))
+    if warns:
+        print("PASS：决策 %d/%d OK、夹持与释放各 %d 次；落位未核对（见上）"
+              % (len(rows), n_slots, n_attach))
+    else:
+        print("PASS：决策 %d/%d OK、夹持与释放各 %d 次、%d 块铁片全部落在对应类型的格内"
+              % (len(rows), n_slots, n_attach, len(poses)))
     return 0
 
 

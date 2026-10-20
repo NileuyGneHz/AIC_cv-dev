@@ -35,6 +35,8 @@ DEFAULT_RULES = {
     "hole_frac_min": 0.008,
     "hole_frac_max": 0.045,
     "hole_drop_min": 100.0,
+    # 贴边孔洞的兜底判据：斑内近黑像素（< level-120）占比。实测孔 0.23~0.75，其余 0.000。
+    "hole_core_min": 0.05,
     "chip_rad_min": 0.68,
     "chip_elong_max": 5.0,
     # 缺角面积下限。取 0.020（不贴着实测值）：frac 用**估计出的盘半径**归一化。
@@ -67,6 +69,16 @@ def classify(comps, rules=None):
                 and c["drop"] >= r["hole_drop_min"]):
             return TYPE_HOLE, "hole frac={:.3f} circ={:.2f} drop={:.0f}".format(
                 c["frac"], c["circ"], c["drop"])
+
+    # A2 贴边孔洞（几何量失效时靠「近黑核心」认）
+    #    孔洞落在盘缘时，圆柱侧壁的阴影会和孔口连成一个连通域：circ 从 0.98 掉到 0.3、
+    #    elong 从 1.0 涨到 2~9、rad 0.78 —— 上面那条和下面的缺角条都判不了它
+    #    （实测被判成缺角，drop 101 夹在缺角 81~86 与孔洞 123 之间，光看亮度也分不开）。
+    #    但孔是通透的：斑内 level-120 以下的像素占 0.23~0.75，其余三类全是 0.000。
+    for c in comps:
+        if c.get("core_frac", 0.0) >= r["hole_core_min"]:
+            return TYPE_HOLE, "hole core={:.2f}（贴边，几何量不可靠）".format(
+                c["core_frac"])
 
     # B 缺角
     for c in comps:
