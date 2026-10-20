@@ -17,6 +17,7 @@ import argparse
 import math
 import os
 import random
+import re
 import sys
 
 import yaml
@@ -447,6 +448,18 @@ def gantry_model(layout, types, slots):
     end = text.rindex("</model>") + len("</model>")
     block = text[start:end]
 
+    # 相机安装高度：SDF 没有模板变量，由这里做一次定点替换（sim_layout.yaml camera.mount_z）。
+    # 只替换 <sensor name="camera"> 后面那一行 pose 的 z，其它 pose 不动。
+    # 关掉时（None）保持 model.sdf 原值 -0.18，格式化去尾零后与原文逐字节一致。
+    cam_z = (layout.get("camera") or {}).get("mount_z")
+    if cam_z is not None:
+        z_txt = ("%.4f" % float(cam_z)).rstrip("0").rstrip(".")
+        block, n = re.subn(
+            r'(<sensor name="camera" type="camera">\s*<pose>0 0 )[-0-9.]+( 0 1\.5708 -1\.5708</pose>)',
+            lambda m: m.group(1) + z_txt + m.group(2), block, count=1)
+        if n != 1:
+            raise SystemExit("[gen_world] 没找到相机 pose，mount_z 替换失败（model.sdf 改过？）")
+
     plugs = []
     for s, t in zip(slots, types):
         name = "material_{:02d}_{}".format(s["id"], TYPE_NAMES[t])
@@ -487,10 +500,14 @@ def main(argv=None):
     ap.add_argument("--out", default=os.path.join(PKG, "worlds", "aic_warehouse.sdf"))
     ap.add_argument("--seed", type=int, default=None,
                     help="缺陷几何随机化种子；不给则读 materials.jitter_seed，0=关闭")
+    ap.add_argument("--cam-z", type=float, default=None,
+                    help="相机安装高度（z_carriage 内的 z 偏移），不给则读 camera.mount_z")
     args = ap.parse_args(argv)
 
     with open(args.layout, "r", encoding="utf-8") as f:
         layout = yaml.safe_load(f)
+    if args.cam_z is not None:
+        layout.setdefault("camera", {})["mount_z"] = args.cam_z
 
     sdf, types = build_sdf(layout, args.seed)
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
