@@ -28,7 +28,7 @@
 | `aic-handeye-calib` | 「标定相机和机械臂」 | 标定板采集、解算脚本框架、参数落盘与验证 | 规划 |
 | `aic-plc-comm` | 「PC 和 PLC 通信」「串口联调」 | 协议选型、帧格式约定、联调排查清单 | 规划 |
 | `aic-motion-3axis` | 「三轴 / 抓取动作调试」 | 坐标系与行程定义、点位示教、回零 / 限位安全规范 | 规划 |
-| `aic-gazebo-sim` | 「仿真不动」「相机没图」「改 Gazebo 场景」「夹不住/放不下」 | Fortress + ROS 2 仿真骨架、世界生成、ros_gz_bridge 方向（含关节反馈桥）、到位判定闭环、DetachableJoint 夹持与码放、15 个仿真坑 + 3 个视觉坑、落位核对探针 | 可用 |
+| `aic-gazebo-sim` | 「仿真不动」「相机没图」「改 Gazebo 场景」「夹不住/放不下」 | Fortress + ROS 2 仿真骨架、世界生成、ros_gz_bridge 方向（含关节反馈桥）、到位判定闭环、DetachableJoint 夹持与码放、20 个坑（含视觉）、落位核对探针 | 可用 |
 
 ## 3. 可复用既有资产
 

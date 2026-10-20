@@ -61,7 +61,7 @@ docs/
 ├── guides/decision_vision_interface.md   vision ↔ decision 契约
 ├── guides/decision_control_interface.md  decision → control 契约（control 接入清单）
 ├── guides/decision_bt_architecture.md    行为树结构 / 黑板键 / 改树前必读的坑
-├── guides/simulation_guide.md            仿真：场景几何 / 话题 / 夹持搬运 / 17 个坑
+├── guides/simulation_guide.md            仿真：场景几何 / 话题 / 夹持搬运 / 20 个坑
 └── adr/0001-btcpp-decision-stack.md      选型记录
 config/  data/  docker/  tools/           留位
 ```
