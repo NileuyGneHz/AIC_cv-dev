@@ -34,6 +34,7 @@ HTTP 接口（默认 127.0.0.1:8080，只绑本机）：
 只读订阅，不发布任何话题 —— 判分器挂了不影响链路本身。
 """
 import json
+import math
 import shutil
 import subprocess
 import threading
@@ -56,6 +57,8 @@ TYPE_NAMES_EN = {1: "SCRATCH", 2: "STAIN", 3: "CHIP", 4: "HOLE"}
 STATUS_LABEL = {
     "pending": "待巡视", "visiting": "识别中", "handling": "搬运中",
     "ok": "正确", "wrong": "错误", "timeout": "超时",
+    "magazine": "待上料", "staged": "识别中", "held": "搬运中",
+    "placed": "已入位", "recycled": "已回收",
 }
 
 # 自由摄像机预设机位：(x, y, z, roll, pitch, yaw)。俯视图默认机位来自 sim_layout.yaml。
@@ -94,7 +97,13 @@ class FrameHub:
 
 
 class ScoreState:
-    """判分 + 态势状态（线程安全：ROS 回调线程写，HTTP 线程读）。"""
+    """判分 + 态势状态（线程安全：ROS 回调线程写，HTTP 线程读）。
+
+    M3 语义：slot_id 既是决策的巡视位点号，也是物料编号（material_slot）。
+    物料流：供料管（magazine）→ 置物台（staged）→ 吸盘（held）→ 货架列位（placed）
+    / 回收位（recycled，识别失败未取走）。
+    判分真值：types[slot-1]（与决策 CSV / gt 桩同一份事实）。
+    """
 
     def __init__(self, doc, types):
         self.doc = doc
@@ -102,14 +111,23 @@ class ScoreState:
         rack = doc.get("rack", {})
         self.rows = int(rack.get("rows", 3))
         self.cols = int(rack.get("cols", 4))
-        self.rack = {k: float(rack.get(k, 0.0))
-                     for k in ("pitch_x", "pitch_y", "center_x", "center_y")}
-        pz = doc.get("place_zones", {})
-        self.zone_xs = [float(v) for v in pz.get("xs", [])]
-        self.zone_y = float(pz.get("y", 0.30))
+        self.pitch_x = float(rack.get("pitch_x", 0.25))
+        self.rack_y_front = float(rack.get("y_front", rack.get("y", 0.30)))
+        self.step_y = float(rack.get("level_step_y", 0.0))
+        self.top_z = float(rack.get("top_z", 0.10))
+        self.lpz = float(rack.get("level_pitch_z", 0.06))
+        st = doc.get("staging", {})
+        self.staging = (float(st.get("x", 0.30)), float(st.get("y", -0.15)))
+        mg = doc.get("magazine", {})
+        self.magazine = (float(mg.get("x", -0.42)), float(mg.get("y", -0.15)))
+        rc = doc.get("recycle", {})
+        self.recycle = (float(rc.get("x", -0.10)), float(rc.get("y", -0.15)))
+        # 吸盘工具基准（z_joint=0 的吸口下沿高度）与盘厚：用于从 gantry z 反推层位
+        self.pad_z0 = float(doc.get("gantry", {}).get("pad_z0", 0.239))
+        self.plate_th = float(doc.get("plate", {}).get("thickness", 0.006))
 
         self.lock = threading.Lock()
-        self.slots = {}                           # slot -> dict(status, got, visit, t)
+        self.slots = {}                           # slot(=轮次位点) -> dict(status, got, visit, t)
         for s in range(1, len(types) + 1):
             self.slots[s] = {"status": "pending", "got": None,
                              "visit": None, "t": None}
@@ -119,20 +137,22 @@ class ScoreState:
         self.cur_slot = None
         self.last_vision = None                   # 最近一条识别结果（显示用）
 
-        # ---- 态势：龙门 + 铁片 ----
+        # ---- 态势：龙门 + 物料 ----
         self.gantry = {"x": 0.0, "y": 0.0, "z": 0.0, "moving": False}
         self.plates = {}                          # slot -> dict(type,status,x,y)
         for s in range(1, len(types) + 1):
-            x, y = self.slot_xy(s)
-            self.plates[s] = {"type": int(types[s - 1]), "status": "rack",
-                              "x": x, "y": y}
+            self.plates[s] = {"type": int(types[s - 1]), "status": "magazine",
+                              "x": self.magazine[0], "y": self.magazine[1]}
 
-    def slot_xy(self, slot_id):
-        col = (slot_id - 1) % self.cols + 1
-        row = (slot_id - 1) // self.cols + 1
-        x = self.rack["center_x"] + (col - (self.cols + 1) / 2.0) * self.rack["pitch_x"]
-        y = self.rack["center_y"] + (row - (self.rows + 1) / 2.0) * self.rack["pitch_y"]
-        return x, y
+    def col_x(self, mtype):
+        """类型列的格心 x（列序即类型号 1..cols）。"""
+        return (int(mtype) - (self.cols + 1) / 2.0) * self.pitch_x
+
+    def level_of_z(self, z_joint):
+        """由放置时的 z_joint 反推层位（1 起）：deck = z_joint + pad_z0 - 盘厚。"""
+        deck = z_joint + self.pad_z0 - self.plate_th
+        return max(1, min(self.rows,
+                          int(round((deck - self.top_z) / self.lpz)) + 1))
 
     # ---------- ROS 回调侧 ----------
     def on_task(self, msg):
@@ -141,12 +161,24 @@ class ScoreState:
                 slot = int(msg.slot_id)
                 self.cur_visit, self.cur_slot = int(msg.visit_index), slot
                 self.gantry["moving"] = True
-                # 超时兜底（不依赖 visit_index 的编号：决策对 GOTO/HANDLE 都递增 visit，
-                # 编号相邻推不出位点相邻）。语义推断：只可能有一个「识别中」的位点，
-                # 决策已经开始巡视下一个库位 = 上一库位视觉没回结果 = TIMEOUT。
+                # 超时兜底：决策已开始巡视下一个位点 = 上一位点视觉没回结果 = TIMEOUT
                 for s, st in self.slots.items():
                     if s != slot and st["status"] == "visiting":
                         self._judge_locked(s, None)
+                # 台面上未被取走的物料（上一位点识别失败）才会被控制侧送回收位。
+                # 不能一见新 GOTO 就回收：决策把 HANDLE(N) 与 GOTO(N+1) 背靠背发出，
+                # 这时 HANDLE(N) 已到、物料却还在台面上（控制器队列里 HANDLE 排前面），
+                # 无条件回收会把正常搬运的物料误标「已回收」（实测一轮误标 5/12）。
+                for i, pl in self.plates.items():
+                    if (i != slot and pl["status"] == "staged"
+                            and i not in self.task_type):
+                        pl["status"] = "recycled"
+                        pl["x"], pl["y"] = self.recycle
+                # 上料：material_slot -> 置物台
+                pl = self.plates.get(slot)
+                if pl is not None and pl["status"] in ("magazine", "recycled"):
+                    pl["status"] = "staged"
+                    pl["x"], pl["y"] = self.staging
                 if self.slots[slot]["status"] == "pending":
                     self.slots[slot]["status"] = "visiting"
             elif msg.action == "HANDLE":
@@ -184,7 +216,7 @@ class ScoreState:
                 self._judge_locked(slot, got)
 
     def on_joint(self, msg):
-        """龙门实时位置（关节零位 = 货架中心正上方，故关节值即世界 x/y）。"""
+        """龙门实时位置（关节值即世界 x/y；z 为 z_joint）。"""
         idx = {}
         for i, name in enumerate(msg.name):
             if "x_joint" in name:
@@ -204,29 +236,33 @@ class ScoreState:
                     pl["x"], pl["y"] = self.gantry["x"], self.gantry["y"]
 
     def on_grip(self, slot, attach):
-        """夹/放事件：铁片开始跟随龙门 / 落到对应类型码放格。
+        """吸/放事件：物料开始跟随龙门 / 落到对应类型列的层位。
 
         门槛（防误判）：开机时控制器会广播 12 路 detach 松爪（坑 13），
-        那不是「放到码放格」——所以 detach 只认「铁片当前是 held」的；
-        attach 只认「该位点 HANDLE 已下达、铁片还在架上」的。
+        那不是「放到货架」——所以 detach 只认「物料当前是 held」的；
+        attach 只认「物料已上到置物台」的。
         """
         with self.lock:
             pl = self.plates.get(slot)
             if pl is None:
                 return
-            if attach and pl["status"] == "rack" and slot in self.task_type:
+            if attach and pl["status"] == "staged":
                 pl["status"] = "held"
                 pl["x"], pl["y"] = self.gantry["x"], self.gantry["y"]
-                self.events.append((time.strftime("%H:%M:%S"), "铁片 %d（%s）已夹起" % (
+                self.events.append((time.strftime("%H:%M:%S"), "物料 %02d（%s）已吸取" % (
                     slot, TYPE_NAMES.get(pl["type"], pl["type"]))))
                 del self.events[:-40]
             elif not attach and pl["status"] == "held":
+                t = pl["type"]
+                # 落位：类型列格心；层位由放置时的 z_joint 反推（阶梯 y）
                 pl["status"] = "placed"
-                if len(self.zone_xs) >= pl["type"]:
-                    pl["x"] = self.zone_xs[pl["type"] - 1]
-                pl["y"] = self.zone_y
-                self.events.append((time.strftime("%H:%M:%S"), "铁片 %d 已放入码放格（%s 列）" % (
-                    slot, TYPE_NAMES.get(pl["type"], pl["type"]))))
+                level = self.level_of_z(self.gantry["z"])
+                pl["x"] = self.col_x(t)
+                pl["y"] = self.rack_y_front - (level - 1) * self.step_y
+                pl["level"] = level
+                self.events.append((time.strftime("%H:%M:%S"),
+                                    "物料 %02d 放入货架（%s 列 · 第 %d 层）" % (
+                                        slot, TYPE_NAMES.get(t, t), level)))
                 del self.events[:-40]
 
     def _judge_locked(self, slot, got):
@@ -267,6 +303,7 @@ class ScoreState:
             wrong = sum(1 for s in self.slots.values() if s["status"] == "wrong")
             to = sum(1 for s in self.slots.values() if s["status"] == "timeout")
             pending = len(self.slots) - ok - wrong - to
+            col_xs = [self.col_x(c) for c in range(1, self.cols + 1)]
             return {
                 "total": len(self.slots),
                 "score": {"ok": ok, "wrong": wrong, "timeout": to, "pending": pending},
@@ -280,8 +317,12 @@ class ScoreState:
                 # ---- 态势图 ----
                 "gantry": dict(self.gantry),
                 "plates": [{"id": s, **pl} for s, pl in sorted(self.plates.items())],
-                "map": {"cols": self.cols, "rows": self.rows, **self.rack,
-                        "zone_xs": self.zone_xs, "zone_y": self.zone_y},
+                "map": {"cols": self.cols, "rows": self.rows,
+                        "col_xs": col_xs, "rack_y": self.rack_y_front,
+                        "step_y": self.step_y, "lpz": self.lpz,
+                        "staging": list(self.staging),
+                        "magazine": list(self.magazine),
+                        "recycle": list(self.recycle)},
             }
 
 
@@ -370,7 +411,7 @@ def build_page():
   <div class="col" style="flex:1">
     <div class="panel" style="padding:8px"><svg id="map" viewBox="0 0 372 300" width="100%"></svg></div>
     <div style="font-size:12px;color:#64748b;padding:0 4px">
-      态势图：圆点=铁片（颜色=缺陷类型），十字=龙门，灰块=码放格</div>
+      态势图：圆点=物料（颜色=缺陷类型，暗=待上料），十字=龙门，绿框=置物台，灰框=供料管</div>
   </div>
 </main>
 <script>
@@ -390,22 +431,40 @@ function drawMap(d) {
   const X = x => (x + ox) * S, Y = y => (y + oy) * S;
   const m = d.map;
   let s = `<rect width="100%" height="100%" fill="#0b1220"/>`;
-  // 码放格（4 个）
-  m.zone_xs.forEach((zx, i) => {
-    s += `<rect x="${X(zx)-19}" y="${Y(m.zone_y)-19}" width="38" height="38"
-      fill="#1e293b" stroke="#475569" rx="4"/>
-      <text x="${X(zx)}" y="${Y(m.zone_y)+4}" fill="#64748b" font-size="11"
-      text-anchor="middle">T${i+1}</text>`;
-  });
-  // 库位地贴 + 铁片
-  for (const p of d.plates) {
-    const [sx, sy] = slotXY(m, p.id);
-    s += `<rect x="${X(sx)-18}" y="${Y(sy)-18}" width="36" height="36"
-      fill="#111c33" stroke="${p.status==='rack' ? '#334155' : 'transparent'}" rx="4"/>`;
+  // 放置货架：4 类型列 x 3 层（层位沿 +Y 阶梯错开，与 sim_layout.rack 一致）
+  for (let lv = 0; lv < m.rows; lv++) {
+    const ry = m.rack_y - lv * m.step_y;
+    m.col_xs.forEach((zx, i) => {
+      s += `<rect x="${X(zx)-19}" y="${Y(ry)-19}" width="38" height="38"
+        fill="#1e293b" stroke="#475569" rx="4"/>`;
+      if (lv === 0) {
+        s += `<text x="${X(zx)}" y="${Y(ry)+4}" fill="#64748b" font-size="11"
+          text-anchor="middle">T${i+1}</text>`;
+      }
+      s += `<text x="${X(zx)+16}" y="${Y(ry)-9}" fill="#334155" font-size="9"
+        text-anchor="middle">L${lv+1}</text>`;
+    });
   }
+  s += `<text x="${X(m.col_xs[0])}" y="${Y(m.rack_y)-30}" fill="#475569" font-size="10"
+    text-anchor="middle">放置货架（4 类型列 x 3 层）</text>`;
+  // 置物台 / 供料管 / 回收位
+  s += `<rect x="${X(m.staging[0])-22}" y="${Y(m.staging[1])-22}" width="44" height="44"
+    fill="#132a1e" stroke="#22c55e" rx="4" stroke-dasharray="4 3"/>
+    <text x="${X(m.staging[0])}" y="${Y(m.staging[1])+30}" fill="#22c55e" font-size="10"
+    text-anchor="middle">置物台</text>`;
+  s += `<rect x="${X(m.magazine[0])-20}" y="${Y(m.magazine[1])-20}" width="40" height="40"
+    fill="#1e293b" stroke="#64748b" rx="4"/>
+    <text x="${X(m.magazine[0])}" y="${Y(m.magazine[1])+30}" fill="#64748b" font-size="10"
+    text-anchor="middle">供料管</text>`;
+  s += `<circle cx="${X(m.recycle[0])}" cy="${Y(m.recycle[1])}" r="14" fill="none"
+    stroke="#a16207" stroke-dasharray="3 3"/>
+    <text x="${X(m.recycle[0])}" y="${Y(m.recycle[1])+28}" fill="#a16207" font-size="10"
+    text-anchor="middle">回收位</text>`;
+  // 物料圆点（待命=供料管处，识别中=置物台，搬运=跟随龙门，已入位=货架列）
   for (const p of d.plates) {
     const pulse = p.status === 'held' ? ` stroke="#fbbf24" stroke-width="3"` : "";
-    s += `<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="13" fill="${TC[p.type]}"${pulse}/>
+    const dim = p.status === 'magazine' ? ` opacity="0.45"` : "";
+    s += `<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="13" fill="${TC[p.type]}"${pulse}${dim}/>
       <text x="${X(p.x)}" y="${Y(p.y)+4}" fill="#0b1220" font-size="11" font-weight="bold"
       text-anchor="middle">${p.id}</text>`;
   }
@@ -415,11 +474,6 @@ function drawMap(d) {
     <line x1="${gx}" y1="${gy-16}" x2="${gx}" y2="${gy+16}" stroke="#fbbf24" stroke-width="2"/>
     <circle cx="${gx}" cy="${gy}" r="9" fill="none" stroke="#fbbf24" stroke-width="2"/>`;
   document.getElementById("map").innerHTML = s;
-}
-function slotXY(m, id) {
-  const col = (id-1) % m.cols + 1, row = Math.floor((id-1)/m.cols) + 1;
-  return [m.center_x + (col-(m.cols+1)/2)*m.pitch_x,
-          m.center_y + (row-(m.rows+1)/2)*m.pitch_y];
 }
 async function tick() {
   try {
@@ -616,22 +670,36 @@ class ScoreNode(Node):
             if body.get("preset") in CAM_PRESETS or body.get("home"):
                 self.cam = CAM_PRESETS.get(body.get("preset"),
                                            CAM_PRESETS["overhead"])
-            cx, cy, cz, cr, cp, cyaw = self.cam
+            cx, cy, cz, roll, pitch, yaw = self.cam
             cx = max(CAM_LIMITS["x"][0], min(CAM_LIMITS["x"][1], cx + float(body.get("dx", 0))))
             cy = max(CAM_LIMITS["y"][0], min(CAM_LIMITS["y"][1], cy + float(body.get("dy", 0))))
             cz = max(CAM_LIMITS["z"][0], min(CAM_LIMITS["z"][1], cz + float(body.get("dz", 0))))
-            self.cam = (cx, cy, cz, cr, cp, cyaw)
-            req = ("entity{{name: \"scene_cam\"}} pose{{position{{x: {:.3f} y: {:.3f} z: {:.3f}}} "
-                   "orientation{{roll: {:.3f} pitch: {:.3f} yaw: {:.3f}}}}}".format(*self.cam))
+            self.cam = (cx, cy, cz, roll, pitch, yaw)
+        # 坑：Fortress 的 set_pose 请求类型是 ignition.msgs.Pose（扁平字段），
+        # 不是 SetPose；也不接受 entity{...} pose{...} 嵌套。类型写错时报
+        # "Unable to create request"，服务没加载时报 "Service call timed out"
+        # （需世界里有 UserCommands 插件）。欧拉角按 R = Rz*Ry*Rx 转四元数，
+        # 与 SDF <pose> 的 rpy 口径一致。
+        cr, sr = math.cos(roll / 2.0), math.sin(roll / 2.0)
+        cp, sp = math.cos(pitch / 2.0), math.sin(pitch / 2.0)
+        cyw, syw = math.cos(yaw / 2.0), math.sin(yaw / 2.0)
+        qw = cr * cp * cyw + sr * sp * syw
+        qx = sr * cp * cyw - cr * sp * syw
+        qy = cr * sp * cyw + sr * cp * syw
+        qz = cr * cp * syw - sr * sp * cyw
         exe = shutil.which("ign") or "ign"
+        req = ('name: "scene_cam" position: {{x: {:.4f} y: {:.4f} z: {:.4f}}} '
+               'orientation: {{x: {:.4f} y: {:.4f} z: {:.4f} w: {:.4f}}}').format(
+                   cx, cy, cz, qx, qy, qz, qw)
         cmd = [exe, "service", "-s", "/world/{}/set_pose".format(self.world),
-               "--reqtype", "ignition.msgs.SetPose", "--reptype", "ignition.msgs.Boolean",
-               "--timeout", "1000", "--req", req]
+               "--reqtype", "ignition.msgs.Pose", "--reptype", "ignition.msgs.Boolean",
+               "--timeout", "2000", "--req", req]
         def run():
             try:
-                r = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-                if r.returncode != 0:
-                    self.get_logger().warn("[dashboard] set_pose 失败: %s" % r.stderr.strip()[:200])
+                r = subprocess.run(cmd, capture_output=True, text=True, timeout=6)
+                out = ((r.stdout or "") + (r.stderr or "")).strip()
+                if r.returncode != 0 or "data: true" not in (r.stdout or ""):
+                    self.get_logger().warn("[dashboard] set_pose 失败: %s" % out[:200])
             except Exception as e:                                    # noqa: BLE001
                 self.get_logger().warn("[dashboard] set_pose 异常: %s" % e)
         threading.Thread(target=run, daemon=True, name="cam-move").start()
