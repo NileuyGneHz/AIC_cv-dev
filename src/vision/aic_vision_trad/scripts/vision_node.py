@@ -43,7 +43,7 @@ class VisionTradNode(Node):
         self.result_topic = self.declare_parameter("result_topic", "/vision/material_type").value
         self.debug_dir = self.declare_parameter("debug_dir", "").value
         self.frame_wait_s = float(self.declare_parameter("frame_wait_s", 1.20).value)
-        self.settle_skip_s = float(self.declare_parameter("settle_skip_s", 0.15).value)
+        self.settle_skip_s = float(self.declare_parameter("settle_skip_s", 0.25).value)
         self.max_stale_s = float(self.declare_parameter("max_stale_s", 1.50).value)
         self.debounce_s = float(self.declare_parameter("debounce_s", 0.20).value)
 
@@ -64,7 +64,11 @@ class VisionTradNode(Node):
         self._min_frame_rx = 0.0      # 只接受这个时刻之后收到的帧
         self._last_pub = 0.0
 
-        img_qos = QoSProfile(depth=5, history=HistoryPolicy.KEEP_LAST,
+        # 坑：depth 一定要 1。识别（Hough）在定时器里跑几十毫秒，期间图像回调会在
+        #     队列里排队；depth=5 时执行器会把 5 帧旧图逐帧送进来，于是「到位后第一帧」
+        #     可能还是 0.25 s 前运动中拍的（实测整盘偏出画面中心 30 px，判成污渍）。
+        #     只要最新一帧就不会有这个问题。
+        img_qos = QoSProfile(depth=1, history=HistoryPolicy.KEEP_LAST,
                              reliability=ReliabilityPolicy.BEST_EFFORT)
         self.create_subscription(Image, self.image_topic, self._on_image, img_qos)
         self.create_subscription(Empty, self.trigger_topic, self._on_trigger, 10)
