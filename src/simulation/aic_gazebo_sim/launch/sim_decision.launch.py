@@ -15,7 +15,7 @@ import time
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (DeclareLaunchArgument, IncludeLaunchDescription,
-                            RegisterEventHandler, Shutdown)
+                            RegisterEventHandler, Shutdown, TimerAction)
 from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -69,6 +69,13 @@ def generate_launch_description():
                               description="gt = ground-truth 桩；trad = 传统视觉（看相机图）"),
         DeclareLaunchArgument("vision_debug_dir", default_value="",
                               description="trad 后端保存调试图的目录（空 = 不存）"),
+        # 坑：决策发完最后一个 HANDLE 就退出，但那是 fire-and-forget ——
+        #     控制器 FIFO 里还压着这条 HANDLE（含夹持 + 搬运 ≈5 s）。
+        #     若 OnProcessExit 立刻 Shutdown，最后一块料会**卡在夹具里没放下**
+        #     （实测 12 次 attach 只有 11 次：第 12 块铁片始终留在货架上）。
+        #     所以退出后先等这段宽限期把队列排空，再关仿真。
+        DeclareLaunchArgument("shutdown_grace_s", default_value="12.0",
+                              description="决策退出后等控制队列排空再关仿真（秒）"),
 
         # 仿真本体 + 控制/视觉桩
         IncludeLaunchDescription(
@@ -84,8 +91,11 @@ def generate_launch_description():
 
         # 决策行为树
         decision_node,
-        # 决策跑完退出后一并关掉仿真（自验友好）；常驻多轮时用 once:=false，不会触发
+        # 决策跑完退出后一并关掉仿真（自验友好）；常驻多轮时用 once:=false，不会触发。
+        # 注意这里不是立刻 Shutdown，而是先等 shutdown_grace_s —— 见参数处的注释。
         RegisterEventHandler(OnProcessExit(
             target_action=decision_node,
-            on_exit=[Shutdown(reason="decision 已退出，关闭仿真")])),
+            on_exit=[TimerAction(
+                period=LaunchConfiguration("shutdown_grace_s"),
+                actions=[Shutdown(reason="decision 已退出，且控制队列已排空")])])),
     ])
