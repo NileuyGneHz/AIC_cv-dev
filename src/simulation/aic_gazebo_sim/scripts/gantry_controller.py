@@ -175,6 +175,9 @@ class GantryController(Node):
         self._t0 = time.monotonic()
         # 当前夹着的槽位；松爪轮次跳过它，防止把刚夹起的料中途放掉
         self._held_slot = 0
+        # 关节反馈看门狗（见 _watch_sim_alive）
+        self._js_last = None
+        self._js_warn_next = 0.0
 
         # 关节反馈订阅。桥在 sim.launch.py 里（ignition.msgs.Model -> sensor_msgs/JointState）。
         # QoS 用 BEST_EFFORT：gz 侧按 sensor data 发，reliable 订阅者会「静默收不到」。
@@ -199,6 +202,25 @@ class GantryController(Node):
             if axis in self.actual:
                 self.actual[axis] = float(pos)
                 self.vel[axis] = float(vel)
+        self._js_last = time.monotonic()
+
+    def _watch_sim_alive(self):
+        """关节反馈断流告警：仿真停住时，下游看到的是「到位超时 + 视觉超时」。
+
+        坑：ogre2 无头渲染 + 12 个 DetachableJoint 长时间跑，实测偶发整条
+        run loop 卡死（gzserver 进程还在、无任何报错，但 joint_state 不再更新、
+        相机也不再出帧）。没有这条告警的话，现场会误判成「视觉挂了 / 控制器没发指令」。
+        自检顺序：先看这条 warn，再看 `ign topic -e -t /clock` 时间戳走不走。
+        """
+        if self._js_last is None:
+            return
+        silent = time.monotonic() - self._js_last
+        if silent < 2.0 or silent < self._js_warn_next:
+            return
+        self._js_warn_next = silent + 10.0
+        self.get_logger().error(
+            "[sim/control] 关节反馈已断流 %.1f s（仿真可能已停住，不是控制/视觉问题）；"
+            "自检：ign topic -e -t /clock 看时间戳是否还在走" % silent)
 
     def _publish_ready(self):
         # 等开机松爪跑完再报 ready（原因见 __init__ 里的注释）。10 s 硬兜底：
@@ -310,6 +332,7 @@ class GantryController(Node):
 
     def _tick(self):
         self._maybe_release()
+        self._watch_sim_alive()
         if self.active is None:
             if not self.steps:
                 if not self.queue:
