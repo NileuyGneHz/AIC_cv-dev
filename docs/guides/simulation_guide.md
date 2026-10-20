@@ -128,6 +128,33 @@ ros2 launch aic_gazebo_sim sim_decision.launch.py invalid_rate:=0.3
 再做「盘内亮度基底 → 暗区连通域 → 相对盘半径归一化」的四类判据。
 离线回归脚本 `scripts/bench_offline.py` 可对 `logs/vision_ds/` 里的样本一次性打分。
 
+### 4.2 图像集图版（提交物素材）
+
+省赛技术文档要求「图像集展示」。跑一轮带调试图的仿真后，把标注帧拼成一页图版：
+
+```bash
+./scripts/run_sim.sh --vision trad --debug-dir logs/m2_debug
+/usr/bin/python3 src/vision/aic_vision_trad/scripts/make_atlas.py \
+    --frames logs/m2_debug --out docs/guides/assets/vision_atlas.png
+```
+
+![缺陷图像集](assets/vision_atlas.png)
+
+- 每行一类、每行 3 张，绿圈是拟合出的盘面，橙框是判据实际使用的那个暗区。
+- 图下三行是**复算**的判据输入（不是抄日志），所以图和数一定对得上：
+  `frac` 暗区占盘面积比、`circ` 圆度、`rad` 离盘心距离/盘半径、
+  `elong` 最小外接矩长宽比、`drop` 相对盘内亮度基底的落差。
+- 四类的典型值（同一批 12 帧）：
+
+| 类型 | frac | circ | elong | rad | drop |
+|---|---|---|---|---|---|
+| 1 划痕 | 0.024 | 0.11 | **23.5** | 0.19 | 57 |
+| 2 污渍 | 0.097 | 0.92 | 1.0 | 0.22 | 77 |
+| 3 缺角 | 0.053–0.064 | 0.30 | 3.0 | **0.77** | 81 |
+| 4 孔洞 | 0.021 | **0.98** | 1.0 | 0.32 | **123** |
+
+判据顺序与间隔见 `defect_classifier.py` 的表头注释；四条判据的最小间隔都在 2 倍以上。
+
 ## 5. 踩过的坑（改仿真前必读）
 
 1. **物理系统不会自动加载**。本机 Fortress 在有 `<physics>` 段时**不**自动装

@@ -170,6 +170,8 @@ def extract_defects(gray, plate, p):
             "rad": float(np.hypot(cents[i][0] - cx, cents[i][1] - cy) / r),
             "mean": mean,
             "drop": level - mean,
+            # 外接框只给可视化用（make_atlas.py 画缺陷框）；判据不读它
+            "bbox": cv2.boundingRect(cnt),
         })
     comps.sort(key=lambda c: -c["area"])
     return level, comps

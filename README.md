@@ -51,6 +51,7 @@ Team workspace conventions live in [AGENTS.md](AGENTS.md) (AI 助手入口) and
 | `scripts/check_decision_run.py` | 断言：位点顺序 / 类型序列 / GOTO·HANDLE 条数 / TIMEOUT 数 |
 | `scripts/verify_sim_m2.sh` | 跑一整轮真视觉搬运，再调下面的断言脚本 |
 | `scripts/check_sim_m2.py` | 断言：结果 12/12、夹放各 12 次、12 块料 x/y/z 落位 |
+| `src/vision/aic_vision_trad/scripts/make_atlas.py` | 把标注帧拼成「图像集」图版（技术文档素材，落 `docs/guides/assets/`） |
 
 ## 目录
 
