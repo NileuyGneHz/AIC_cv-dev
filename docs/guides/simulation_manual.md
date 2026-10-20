@@ -62,6 +62,18 @@ cd ~/AIC_cv-dev
 
 看到 `PASS` 即整条链路（视觉 → 决策 → 抓取 → 码放 → 落位）全部正常。
 
+### 4.1 确认工作成果：按验证目标选命令
+
+| 你想确认的成果 | 命令 | 通过标准 | 耗时 |
+|---|---|---|---|
+| 链路通不通（决策→控制→仿真闭环） | `./scripts/run_sim.sh` | 结果 CSV 12 行全 OK | ≈40 s |
+| **端到端完整成果**（真视觉识别 + 物理抓放 + 落位） | `./scripts/verify_sim_m2.sh` | **PASS**（三组断言全过） | ≈100 s |
+| 四类缺陷识别都对 | 同上 + 看 CSV 类型列 vs 真值 | 逐位一致（按 slot_id 对） | ≈100 s |
+| 识别对随机几何也稳（泛化） | `./scripts/verify_sim_robust.sh` | 汇总表 0 误判 | ≈7 min |
+| TIMEOUT 兜底不崩 | `./scripts/run_sim.sh --drop-rate 0.6` | 巡视走完 12 位点、无 FAILURE | ≈75 s |
+| 边看画面边确认（判分绿/红 + 抓取过程 + 自由机位） | `ros2 launch aic_dashboard dashboard.launch.py vision_backend:=trad` | 浏览器 `127.0.0.1:8080`：12 格全绿、态势图 12 块全落码放格 | ≈95 s |
+| 识别失败现场证据 | `./scripts/run_sim.sh --vision trad --debug-dir logs/dbg` | `logs/dbg/vision_fail_*.png`（无 = 没判错过） | ≈85 s |
+
 ## 5. 运行模式：run_sim.sh 全参数
 
 入口：`./scripts/run_sim.sh [选项]`。产物固定在 `logs/sim_launch_<stamp>.log` 与结果 CSV。
@@ -128,6 +140,7 @@ materials:
 | `gantry` | `xy_speed:0.30 z_speed:0.20 pick_z:−0.04 pos_tol:0.003 vel_tol:0.010 move_timeout_s:8` | 运动剖面与闭环到位阈值 |
 | `camera` | `width:640 height:480 update_rate:20` | 末端俯视相机 |
 | `place_zones` | 4 个格心 x = −0.36/−0.12/+0.12/+0.36，y=0.30 | 码放格（按类型），真机料框排布拿到后改这里 |
+| `scene_cam` | `pose / fov / width:960 height:540 / update_rate:15` | 自由摄像机（看板全景主画面 `/scene/image`；机位可在看板页面上调，改默认值才需要动这里） |
 
 坐标系：+X 右（列增大）、+Y 远（row 3）、+Z 上；行进高度下相机画面 **右=+X、上=−Y**。
 
