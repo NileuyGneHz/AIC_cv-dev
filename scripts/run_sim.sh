@@ -9,6 +9,7 @@
 #   ./scripts/run_sim.sh --vision trad   # 换真视觉（aic_vision_trad 读相机图，不用真值桩）
 #   ./scripts/run_sim.sh --debug-dir logs/vision_debug   # 真视觉存标注图
 #   ./scripts/run_sim.sh --results logs/my.csv
+#   ./scripts/run_sim.sh --domain auto    # 隔离实例（同机跑别的仿真时用，自动挑空闲号）
 #
 # 产物：logs/sim_launch_<stamp>.log、决策结果 CSV（默认 logs/sim_results_<stamp>.csv）
 set -euo pipefail
@@ -43,6 +44,7 @@ DROP="0.0"
 INVALID="0.0"
 VISION="gt"
 DEBUG_DIR=""
+DOMAIN=""
 STAMP="$(date +%Y%m%d_%H%M%S)"
 RESULTS="logs/sim_results_${STAMP}.csv"
 
@@ -55,10 +57,29 @@ while [[ $# -gt 0 ]]; do
     --vision) VISION="$2"; shift 2 ;;
     --debug-dir) DEBUG_DIR="$2"; shift 2 ;;
     --results) RESULTS="$2"; shift 2 ;;
-    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
+    --domain) DOMAIN="$2"; shift 2 ;;
+    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
     *) echo "[sim] 未知参数：$1" >&2; exit 2 ;;
   esac
 done
+
+# 并行隔离：同机跑两套仿真时，话题名（/world/aic_warehouse/*、/control/*）完全相同，
+# 真值桩会替对方的位点秒回类型 —— 表现为「类型整片错位 + 莫名 TIMEOUT」。
+# 给每个实例独立的 ROS domain 与 Gazebo partition 即可互不干扰：
+#   ./scripts/run_sim.sh --domain auto   # 自动挑空闲号（推荐，同机多套并行就靠它）
+#   ./scripts/run_sim.sh --domain 7      # 手挑固定号（只在确认没人用时）
+# 注意：手工 `ign topic` 查这个实例时要带同样的 IGN_PARTITION。
+# shellcheck source=lib/sim_domain.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/sim_domain.sh"
+if [[ "${DOMAIN}" == "auto" ]]; then
+  DOMAIN="$(sim_alloc_domain)" || { echo "[sim] 找不到空闲 domain" >&2; exit 2; }
+  echo "[sim] 自动分配 domain=${DOMAIN}"
+fi
+if [[ -n "${DOMAIN}" ]]; then
+  sim_apply_domain "${DOMAIN}"
+  echo "[sim] 隔离：ROS_DOMAIN_ID=${ROS_DOMAIN_ID} IGN_PARTITION=${IGN_PARTITION}"
+  trap 'sim_release_domain' EXIT
+fi
 
 mkdir -p logs
 LOG="logs/sim_launch_${STAMP}.log"

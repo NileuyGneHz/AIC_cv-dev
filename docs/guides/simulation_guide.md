@@ -328,9 +328,47 @@ ros2 launch aic_gazebo_sim sim_decision.launch.py invalid_rate:=0.3
     **肉眼无法区分**。区分办法：在 launch 日志里找
     `signal_handler(SIGINT/SIGTERM)` 与 `process has finished cleanly` —— 有这两行就是桥被杀了，不是仿真死了。
     实测 seed 2 第一次跑只有 1/12，改回脚本后同一 seed 复跑 12/12。
-    同理 **不要在同一台机器上并发起第二套仿真**（推断：共用 GZ 分区与
-    `/world/aic_warehouse/*` 话题名，会互抢订阅/服务；未做对照实验）。
-    改脚本前先确认没有仿真在跑：`pgrep -af gzserver`。
+    同理 **不要在同一台机器上并发起第二套仿真** —— 这点已实测（2026-10-20）：
+    两套实例共用同一个 ROS domain 时话题名完全重合（`/world/aic_warehouse/*`、
+    `/control/*`、`/vision/*`），**真值桩会替对方的位点秒回类型**，一轮里出现
+    **3 个 TIMEOUT + 4 个类型错位 + 只夹起 7 块**；更糟的是两边的 `cleanup` 都
+    `pkill gzserver`，互相把对方的桥杀掉。表象与「视觉退化」几乎一样。
+    - 起跑前检查：`ps -eo pid,etimes,cmd | grep -E 'gzserver|verify_sim'`，看到两个就是串台；
+    - 改脚本前先确认没有仿真在跑：`pgrep -af gzserver`。
+23. **并行隔离「没生效」其实是两套选了同一个号**（2026-10-20 结案，此前结论是错的）。
+    早先记录说「设了 `IGN_PARTITION` 仍能看到同名话题 ⇒ 分区不生效」，**这个判断错了**：
+    先用一条空分区做对照（`ign topic -l | wc -l`）：
+
+    ```
+    IGN_PARTITION=aic_sim_99   → 0 条      ← 分区过滤是好的，没人用就什么都看不到
+    IGN_PARTITION=aic_sim_7    → 53 条
+    未设                        → 26 条
+    ```
+
+    再查两个 gzserver 的进程环境，直接坐实「撞号」：
+
+    ```
+    PID 34515  ROS_DOMAIN_ID=7 IGN_PARTITION=aic_sim_7   ← 我这路
+    PID 34850  ROS_DOMAIN_ID=7 IGN_PARTITION=aic_sim_7   ← 另一个会话
+    ```
+
+    **坑点在于「固定号」本身**：两个会话各自 `--domain 7` 就必然撞车，与分区机制无关。
+    另一个坑：**别用话题条数判断撞没撞** —— 单套实例本身就是 53 条，两套也是 53 条
+    （同名话题在 `ign topic -l` 里只列一次）。唯一可靠的判断是读
+    `/proc/<pid>/environ` 比对 `IGN_PARTITION`。
+
+    处置改成**自动分配**（`scripts/lib/sim_domain.sh`）：
+    扫 `/proc/*/environ` 收已用 domain → 排除登记表 `logs/.sim_domains` 里仍存活的号
+    → 再用「该分区 `ign topic -l` 为 0 条」实测确认 → `flock` 持锁登记，防同一瞬间抢同一个号。
+
+    ```bash
+    ./scripts/verify_sim_m2.sh --domain auto   # 推荐；三个人同时跑也不会串
+    ./scripts/run_sim.sh --domain auto
+    ```
+
+    手工 `ign topic` 查某个隔离实例时，要带同样的 `IGN_PARTITION`（脚本会打印分配的号）。
+
+
 
 ## 6. 已验证 / 未做
 

@@ -9,6 +9,8 @@
 #   ./scripts/verify_sim_m2.sh                 # 真视觉（默认），约 100 s
 #   ./scripts/verify_sim_m2.sh --vision gt     # 真值桩（排除视觉因素，定位控制/物理问题）
 #   ./scripts/verify_sim_m2.sh --timeout 300   # 机器慢时放宽等待上限
+#   ./scripts/verify_sim_m2.sh --domain auto   # 隔离实例：同机还有别的仿真在跑时用（推荐）
+#   ./scripts/verify_sim_m2.sh --domain 7      # 指定固定号（只在确认没人用时）
 #
 # 产物：logs/verify_m2_<stamp>.csv|log、logs/verify_m2_pose_<stamp>.txt
 set -uo pipefail
@@ -24,12 +26,14 @@ fi
 VISION="trad"
 LIMIT=240
 DEBUG_DIR=""
+DOMAIN=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --vision) VISION="$2"; shift 2 ;;
     --timeout) LIMIT="$2"; shift 2 ;;
     --debug-dir) DEBUG_DIR="$2"; shift 2 ;;
-    -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
+    --domain) DOMAIN="$2"; shift 2 ;;
+    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "[verify] 未知参数：$1" >&2; exit 2 ;;
   esac
 done
@@ -47,6 +51,21 @@ export ROS_LOG_DIR="${ROS_HOME}/log"
 mkdir -p "${ROS_LOG_DIR}" logs
 export ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-1}"
 
+# 并行隔离：给每个实例独立的 ROS domain 与 Gazebo partition（坑 23）。
+# 不起作用的话，两套仿真会共用 /world/aic_warehouse/* 话题，真值桩替对方秒回类型。
+# shellcheck source=lib/sim_domain.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/sim_domain.sh"
+if [[ "${DOMAIN}" == "auto" ]]; then
+  # 手挑固定号会撞：实测两个会话都选 7，同一分区里 53 条话题（两套 × 26 条）。
+  # 自动分配会扫进程表 + 探测空分区，并把占用的号登记到 logs/.sim_domains。
+  DOMAIN="$(sim_alloc_domain)" || { echo "[verify] 找不到空闲 domain（1-${SIM_DOMAIN_MAX} 都被占）" >&2; exit 2; }
+  echo "[verify] 自动分配 domain=${DOMAIN}"
+fi
+if [[ -n "${DOMAIN}" ]]; then
+  sim_apply_domain "${DOMAIN}"
+  echo "[verify] 隔离：ROS_DOMAIN_ID=${ROS_DOMAIN_ID} IGN_PARTITION=${IGN_PARTITION}"
+fi
+
 STAMP="$(date +%Y%m%d_%H%M%S)"
 CSV="logs/verify_m2_${STAMP}.csv"
 LOG="logs/verify_m2_${STAMP}.log"
@@ -62,13 +81,14 @@ echo "[verify] vision=${VISION} 位点数=${N_SLOTS} 结果 CSV=${CSV}"
 
 # 起跑前检查：两个仿真共用一个 ROS domain 会互相污染（真值桩秒回类型、夹放对不上），
 # 现象极像「视觉退化」。这里**不替用户杀进程**（同一台机器上可能还有别的窗口在跑），
-# 只报告并退出，让人自己决定。
-if pgrep -f 'aic_gazebo_sim/lib/aic_gazebo_sim' >/dev/null 2>&1 \
-   || pgrep -f 'aic_vision_trad/lib/aic_vision_trad' >/dev/null 2>&1 \
-   || pgrep -f 'aic_behavior_tree/lib/aic_behavior_tree' >/dev/null 2>&1; then
+# 只报告并退出，让人自己决定。给了 --domain 就跳过 —— 那种情况已经隔离，可以并行。
+if [[ -z "${DOMAIN}" ]] \
+   && { pgrep -f 'aic_gazebo_sim/lib/aic_gazebo_sim' >/dev/null 2>&1 \
+        || pgrep -f 'aic_vision_trad/lib/aic_vision_trad' >/dev/null 2>&1 \
+        || pgrep -f 'aic_behavior_tree/lib/aic_behavior_tree' >/dev/null 2>&1; }; then
   echo "[verify] 已有仿真节点在跑（另一个窗口 / 上一轮没退干净）。" >&2
-  echo "[verify] 两个仿真共用 ROS domain 会让结果整片错位，先确认它停了再跑。" >&2
-  echo "[verify] 确认可以清理时：pkill -f aic_gazebo_sim/lib/aic_gazebo_sim 等三条（见文档）" >&2
+  echo "[verify] 两个仿真共用 ROS domain 会让结果整片错位；要么先停掉它，" >&2
+  echo "[verify] 要么用 ./scripts/verify_sim_m2.sh --domain auto 跑隔离实例。" >&2
   exit 3
 fi
 
@@ -100,6 +120,7 @@ cleanup() {
   pgrep -P "${LAUNCH_PID}" >/dev/null 2>&1 && kill_tree "${LAUNCH_PID}"
   sleep 1
   kill -KILL "${LAUNCH_PID}" 2>/dev/null
+  [[ -n "${DOMAIN}" ]] && sim_release_domain
 }
 trap cleanup EXIT
 

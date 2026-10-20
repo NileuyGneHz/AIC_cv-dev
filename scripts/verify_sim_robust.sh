@@ -12,6 +12,7 @@
 #   ./scripts/verify_sim_robust.sh --frames 5     # 同时存调试图到 frames_seed_5/（做图像集/特征统计）
 #
 # 产物：logs/robust_<stamp>/seed_<N>.{csv,log}，末尾打印汇总表。
+# 每个种子都通过 verify_sim_m2.sh --domain auto 起隔离实例，所以同机有别的仿真在跑也能跑。
 # 结束（含 Ctrl-C / 失败）时会把世界恢复成 materials.jitter_seed（默认 0）的基线，
 # 免得把某个随机种子留在工作区的 worlds/aic_warehouse.sdf 里。
 #
@@ -66,7 +67,8 @@ for seed in "${SEEDS[@]}"; do
     extra=(--debug-dir "${OUT}/frames_seed_${seed}")
   fi
   # verify_sim_m2 自己会写一份带时间戳的 CSV；跑完把最新那份搬进本次目录
-  ./scripts/verify_sim_m2.sh --vision "${VISION}" --timeout 300 "${extra[@]}" >"${log}" 2>&1
+  # --domain auto：同机常有别的仿真在跑，不隔离会直接 exit 3（或更糟——串台跑出错结论）
+  ./scripts/verify_sim_m2.sh --vision "${VISION}" --timeout 300 --domain auto "${extra[@]}" >"${log}" 2>&1
   rc=$?
   csv="$(sed -n 's/^\[verify\] .*结果 CSV=//p' "${log}" | head -1)"
   ok="?"; total="?"
