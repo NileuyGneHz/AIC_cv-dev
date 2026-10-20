@@ -40,6 +40,7 @@ export ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-1}"
 
 GUI="false"
 ONCE="true"
+AUTORESTART="false"
 DROP="0.0"
 INVALID="0.0"
 VISION="gt"
@@ -51,7 +52,7 @@ RESULTS="logs/sim_results_${STAMP}.csv"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --gui) GUI="true"; shift ;;
-    --loop) ONCE="false"; shift ;;
+    --loop) ONCE="false"; AUTORESTART="true"; shift ;;
     --drop-rate) DROP="$2"; shift 2 ;;
     --invalid-rate) INVALID="$2"; shift 2 ;;
     --vision) VISION="$2"; shift 2 ;;
@@ -96,6 +97,7 @@ fi
 ros2 launch aic_gazebo_sim sim_decision.launch.py \
   gui:="${GUI}" \
   once:="${ONCE}" \
+  auto_restart:="${AUTORESTART}" \
   results_csv:="${RESULTS}" \
   drop_rate:="${DROP}" \
   invalid_rate:="${INVALID}" \

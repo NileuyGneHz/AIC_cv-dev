@@ -37,6 +37,8 @@ def generate_launch_description():
         # 仿真 + 决策原样透传（见 sim_decision.launch.py 的同名参数）
         DeclareLaunchArgument("gui", default_value="false"),
         DeclareLaunchArgument("once", default_value="true"),
+        DeclareLaunchArgument("auto_restart", default_value="false",
+                              description="true = 决策常驻多轮（与 once:=false 连用）"),
         DeclareLaunchArgument("vision_backend", default_value="gt"),
         DeclareLaunchArgument("vision_debug_dir", default_value=""),
         DeclareLaunchArgument("drop_rate", default_value="0.0"),
@@ -52,6 +54,7 @@ def generate_launch_description():
             launch_arguments={
                 "gui": LaunchConfiguration("gui"),
                 "once": LaunchConfiguration("once"),
+                "auto_restart": LaunchConfiguration("auto_restart"),
                 "vision_backend": LaunchConfiguration("vision_backend"),
                 "vision_debug_dir": LaunchConfiguration("vision_debug_dir"),
                 "drop_rate": LaunchConfiguration("drop_rate"),

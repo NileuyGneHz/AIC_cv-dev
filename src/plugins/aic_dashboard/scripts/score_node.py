@@ -91,8 +91,17 @@ class ScoreState:
     def on_arrived(self, msg):
         slot = int(msg.data)
         with self.lock:
-            if slot in self.slots and self.slots[slot]["status"] == "pending":
-                self.slots[slot]["status"] = "visiting"
+            st = self.slots.get(slot)
+            if st is None:
+                return
+            # 已落判的位点又被巡视 = 决策开了新一轮：自动清盘（多轮连拍时
+            # 免去手动 POST /api/reset；单轮模式不会触发——每轮每位点只走一次）。
+            if st["status"] in ("ok", "wrong", "timeout"):
+                for s2 in self.slots.values():
+                    s2.update(status="pending", got=None, visit=None, t=None)
+                self.task_type.clear()
+                self.events.append((time.strftime("%H:%M:%S"), "检测到新一轮巡视，已自动清盘"))
+            st["status"] = "visiting"
 
     def on_vision(self, msg):
         with self.lock:

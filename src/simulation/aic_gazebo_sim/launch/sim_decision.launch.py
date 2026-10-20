@@ -38,12 +38,18 @@ def generate_launch_description():
                              "vision_timeout_s": LaunchConfiguration("vision_timeout_s"),
                              # 仿真 control 会发 /control/ready；打开握手，避免首条 GOTO 丢
                              "control_wait_ready": True,
+                             # 坑：决策常驻要的是 auto_restart，不是 once:=false ——
+                             # auto_restart 缺省 false，只给 once:=false 时一轮结束照样退出，
+                             # 触发下面的 Shutdown 把整个仿真一起关掉（实测 --loop 因此失效）。
+                             "auto_restart": LaunchConfiguration("auto_restart"),
                          }])
 
     return LaunchDescription([
         DeclareLaunchArgument("gui", default_value="false"),
         DeclareLaunchArgument("once", default_value="true",
                               description="true = 跑完一轮巡视即退出（自验用）"),
+        DeclareLaunchArgument("auto_restart", default_value="false",
+                              description="true = 一轮结束后决策自动重开巡视（常驻多轮；与 once:=false 连用）"),
         DeclareLaunchArgument(
             "results_csv",
             default_value="logs/sim_results_{}.csv".format(time.strftime("%Y%m%d_%H%M%S")),
