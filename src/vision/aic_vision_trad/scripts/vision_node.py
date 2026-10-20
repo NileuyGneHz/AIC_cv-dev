@@ -195,6 +195,14 @@ def main():
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
+    except RuntimeError as e:
+        # 坑：关停瞬间 rclpy 仍在从已销毁的订阅里取消息，会抛
+        # "Unable to convert call argument to Python object"。
+        # 这发生在 SIGINT 之后（本轮 12/12 已跑完），但会让 launch 报
+        # 「process has died [exit code 1]」，录像/自验时看着像真故障。
+        if rclpy.ok():
+            raise
+        node.get_logger().info("[vision] 收到退出信号（%s），正常收敛" % e)
     finally:
         node.destroy_node()
         if rclpy.ok():

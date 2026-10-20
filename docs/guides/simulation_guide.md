@@ -423,6 +423,14 @@ ros2 launch aic_gazebo_sim sim_decision.launch.py invalid_rate:=0.3
 
 
 
+27. **关停瞬间视觉节点报 `RuntimeError: Unable to convert call argument to Python object`**
+    （2026-10-20）。整轮已经 12/12，SIGINT 之后 launch 打印
+    `process has died [exit code 1]`，看着像真故障。真因是 rclpy 在上下文销毁过程中
+    仍从已失效的订阅取消息（图像话题 20 Hz，正好卡在关停窗口）。
+    修法：`vision_node.py` 的 `main()` 捕获 `RuntimeError`，仅在 `rclpy.ok()` 已为假
+    （即确属关停）时吞掉并打一行「正常收敛」；运行期同类异常仍会抛出，不掩盖真问题。
+    判断是否同类：看 traceback 是否紧跟在 `signal_handler(SIGINT/SIGTERM)` 之后。
+
 ## 6. 已验证 / 未做
 
 **一键自验**：`./scripts/verify_sim_m2.sh`（M3 一轮约 200 s）。起真视觉跑一整轮，等日志里第 12 次
