@@ -1,10 +1,20 @@
 <?xml version="1.0" ?>
 <!--
-  三轴龙门（XYZ 门架式）仿真模型 —— AIC 视觉逻辑算法应用赛
+  三轴龙门（XYZ 门架式）仿真模型 —— AIC 视觉逻辑算法应用赛（M3：对齐官方平台）
 
   结构：base（立柱+双 X 导轨）→ x_joint（横梁沿 X 移动）
-        → y_joint（小车沿 Y 移动）→ z_joint（Z 轴升降，末端工具+相机）
-  关节零位：相机位于货架中心正上方，末端处于最高位。
+        → y_joint（小车沿 Y 移动）→ z_joint（Z 轴升降，末端吸盘+相机）
+  关节零位：吸盘吸口在行进最高位（世界 z=0.239），相机在 0.365。
+
+  M3 变更（参考 VirtualNext 官方整机效果图）：
+    - 末端两指夹爪 → 真空吸盘（法兰盘 + 波纹管 + 吸盘），官方是吸盘取放；
+      DetachableJoint 的 attach/detach 语义不变（attach = 吸盘使能）。
+    - 工具基准抬高：M2 时夹指底面 z_joint=0 -> 0.115 m；M3 吸盘下沿 0.239 m ——
+      货架改成 3 层立体货架（层高 0.10/0.16/0.22），最高层盘顶 0.226 m，
+      旧基准够不着。目标高度换算：z_joint = 盘顶高度 - 0.239（pad_z0，
+      见 sim_layout.yaml gantry 段）。z 下限相应从 -0.42 收到 -0.20。
+    - 相机世界高度不变（0.545-0.18=0.365），置物台盘顶 0.106，
+      距离 ~0.26 m，盘半径 ~83 px 与 M2 标定一致。
 
   与 ROS 的接口（全部经 ros_gz_bridge，见 launch/sim.launch.py）：
     /aic/joint/x/cmd_pos   std_msgs/Float64 → ignition.msgs.Double  （位置指令，m）
@@ -14,9 +24,6 @@
     /world/aic_warehouse/model/aic_gantry/joint_state   ignition.msgs.Model → sensor_msgs/JointState
   相机：
     /camera/image, /camera/camera_info
-
-  改几何前先读 config/sim_layout.yaml：pick_z / travel_z 依赖这里的工具高度
-  （z_joint=0 时夹指底面 z=0.115 m，铁片顶面 z=0.109 m）。
 -->
 <sdf version="1.6">
   <model name="aic_gantry">
@@ -33,25 +40,25 @@
         </inertia>
       </inertial>
 
-      <!-- 四根立柱 -->
+      <!-- 四根立柱（M3：站在整机底板上表面 0.02 上） -->
       <visual name="post_fl">
-        <pose>0.50 -0.30 0.30 0 0 0</pose>
+        <pose>0.50 -0.30 0.32 0 0 0</pose>
         <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
         <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.34 0.35 0.37 1</diffuse>
           <specular>0.1 0.1 0.1 1</specular></material>
       </visual>
       <visual name="post_fr">
-        <pose>0.50 0.30 0.30 0 0 0</pose>
+        <pose>0.50 0.30 0.32 0 0 0</pose>
         <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
         <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.34 0.35 0.37 1</diffuse></material>
       </visual>
       <visual name="post_bl">
-        <pose>-0.50 -0.30 0.30 0 0 0</pose>
+        <pose>-0.50 -0.30 0.32 0 0 0</pose>
         <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
         <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.34 0.35 0.37 1</diffuse></material>
       </visual>
       <visual name="post_br">
-        <pose>-0.50 0.30 0.30 0 0 0</pose>
+        <pose>-0.50 0.30 0.32 0 0 0</pose>
         <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
         <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.34 0.35 0.37 1</diffuse></material>
       </visual>
@@ -70,19 +77,19 @@
       </visual>
 
       <collision name="post_fl_col">
-        <pose>0.50 -0.30 0.30 0 0 0</pose>
+        <pose>0.50 -0.30 0.32 0 0 0</pose>
         <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
       </collision>
       <collision name="post_fr_col">
-        <pose>0.50 0.30 0.30 0 0 0</pose>
+        <pose>0.50 0.30 0.32 0 0 0</pose>
         <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
       </collision>
       <collision name="post_bl_col">
-        <pose>-0.50 -0.30 0.30 0 0 0</pose>
+        <pose>-0.50 -0.30 0.32 0 0 0</pose>
         <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
       </collision>
       <collision name="post_br_col">
-        <pose>-0.50 0.30 0.30 0 0 0</pose>
+        <pose>-0.50 0.30 0.32 0 0 0</pose>
         <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
       </collision>
     </link>
@@ -158,50 +165,34 @@
           <specular>0.6 0.6 0.6 1</specular></material>
       </visual>
 
-      <!-- 工具法兰：两根横条（中间留出相机光路） -->
+      <!-- 工具支架：两根横条（M3 纯装饰、无碰撞体 —— 相机已改为固定在置物台
+           正上方（gen_world.py 生成 ee_cam），吸盘不进光路，无需留中空） -->
       <visual name="flange_bar_a">
-        <pose>-0.010 -0.055 -0.41 0 0 0</pose>
-        <geometry><box><size>0.18 0.02 0.02</size></box></geometry>
+        <pose>-0.010 -0.035 -0.275 0 0 0</pose>
+        <geometry><box><size>0.10 0.02 0.015</size></box></geometry>
         <material><ambient>0.35 0.36 0.38 1</ambient><diffuse>0.40 0.41 0.43 1</diffuse></material>
       </visual>
       <visual name="flange_bar_b">
-        <pose>-0.010 0.055 -0.41 0 0 0</pose>
-        <geometry><box><size>0.18 0.02 0.02</size></box></geometry>
+        <pose>-0.010 0.035 -0.275 0 0 0</pose>
+        <geometry><box><size>0.10 0.02 0.015</size></box></geometry>
         <material><ambient>0.35 0.36 0.38 1</ambient><diffuse>0.40 0.41 0.43 1</diffuse></material>
       </visual>
 
-      <!-- 夹指（沿 X 开合；z_joint=0 时底面 z=0.115 m） -->
-      <visual name="finger_l">
-        <pose>-0.036 0 -0.395 0 0 0</pose>
-        <geometry><box><size>0.012 0.05 0.03</size></box></geometry>
-        <material><ambient>0.85 0.55 0.10 1</ambient><diffuse>0.92 0.62 0.12 1</diffuse></material>
+      <!-- 真空吸盘：波纹管 + 吸口（z_joint=0 时吸口下沿世界 z=0.239，
+           即 sim_layout.yaml gantry.pad_z0；改这里必须同步改那个值） -->
+      <visual name="suction_bellows">
+        <pose>-0.010 0 -0.294 0 0 0</pose>
+        <geometry><cylinder><radius>0.018</radius><length>0.022</length></cylinder></geometry>
+        <material><ambient>0.20 0.20 0.22 1</ambient><diffuse>0.26 0.26 0.28 1</diffuse></material>
       </visual>
-      <visual name="finger_r">
-        <pose>0.036 0 -0.395 0 0 0</pose>
-        <geometry><box><size>0.012 0.05 0.03</size></box></geometry>
+      <visual name="suction_pad">
+        <pose>-0.010 0 -0.303 0 0 0</pose>
+        <geometry><cylinder><radius>0.020</radius><length>0.006</length></cylinder></geometry>
         <material><ambient>0.85 0.55 0.10 1</ambient><diffuse>0.92 0.62 0.12 1</diffuse></material>
       </visual>
 
-      <!-- 相机：朝下（rpy pitch=+90° 把相机 +X 光轴转成世界 -Z） -->
-      <sensor name="camera" type="camera">
-        <pose>0 0 -0.18 0 1.5708 -1.5708</pose>
-        <always_on>1</always_on>
-        <visualize>false</visualize>
-        <update_rate>20</update_rate>
-        <topic>/camera/image</topic>
-        <camera>
-          <horizontal_fov>1.047</horizontal_fov>
-          <image>
-            <width>640</width>
-            <height>480</height>
-            <format>R8G8B8</format>
-          </image>
-          <clip>
-            <near>0.005</near>
-            <far>4.0</far>
-          </clip>
-        </camera>
-      </sensor>
+      <!-- M3：相机已移出龙门（固定在置物台正上方，gen_world.py 生成 ee_cam 模型，
+           话题仍是 /camera/image），末端只剩吸盘 -->
     </link>
 
     <!-- ============================== 关节 ============================== -->
@@ -243,8 +234,12 @@
       <axis>
         <xyz>0 0 1</xyz>
         <limit>
-          <lower>-0.42</lower>
-          <upper>0.0</upper>
+          <!-- M3：吸盘基准 0.239，最低需求 = 置物台盘顶 0.106 → z=-0.133；
+               收紧到 -0.20 留余量（M2 的 -0.42 是给旧夹爪几何的） -->
+          <!-- M3：上限 +0.03 —— 携料平移时盘底（pad_z0+travel_z-盘厚 = 0.253）
+               必须跨过第 3 层围边顶（0.232）；下限 -0.20 覆盖最低取放位 -->
+          <lower>-0.20</lower>
+          <upper>0.03</upper>
           <effort>200</effort>
           <velocity>0.15</velocity>
         </limit>

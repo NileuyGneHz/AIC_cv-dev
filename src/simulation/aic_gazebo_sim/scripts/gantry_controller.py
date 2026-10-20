@@ -1,25 +1,28 @@
 #!/usr/bin/python3
-"""三轴龙门控制侧仿真实现（v1）：吃 /control/material_task，驱动机台走位。
+"""三轴龙门控制侧仿真实现（M3：对齐官方平台流程）。
 
 契约：docs/guides/decision_control_interface.md（decision -> control）
       实际消息定义以 src/plugins/aic_msgs/msg/MaterialTask.msg 为准（uint8 + action 字符串）。
 
+M3 轮次语义（官方 VirtualNext 平台：置物台上料 -> 拍照 -> 吸盘取 -> 放货架列位）
+--------
+* GOTO(slot)：第 k 个 GOTO = 第 k 轮。先把 material_k 从供料管传送到置物台
+  （ign service set_pose；上一轮识别失败留在台面的物料先送回收位），
+  然后龙门走到置物台上方，到位发 /sim/gantry_arrived -> 视觉识别。
+* HANDLE(slot, type)：吸盘下探吸附（attach material_k）-> 提升 -> 平移到
+  货架「类型 type 列」的最低空层 -> 放入（每格一块，不堆叠）-> 松开 -> 提升，
+  发 /sim/handle_done。slot 在 M3 只是轮次编号，不再对应取料库位。
+* 决策侧零改动：话题契约 / 状态机不变。
+
 实现要点
 --------
 * 指令话题是 fire-and-forget：本节点维护 FIFO 队列，逐条执行，不抢决策的节奏。
-* 运动用「梯形速度剖面 + 每 20 ms 流式下发 setpoint」的方式驱动 Gazebo 的
-  JointPositionController（/aic/joint/{x,y,z}/cmd_pos，std_msgs/Float64）。
-  这样在 x/y/z 之间是协调运动（同起同停），视觉上像真机，且时序可预测。
-* 到位判定用「剖面走完 + 关节反馈收敛」，不再靠固定 settle 时间。
-  早期版本按「剖面时间走完 + 0.15 s」就报到位，结果机台实际还在追：
-  实测 p_gain=20 时，剖面 1.25 s 结束，实际位置到 4.8 s 才追上、过冲 17.7 mm、
-  8.6 s 才停稳。于是「到位」那一刻相机看到的画面偏了整整一格，视觉必然失配。
-  现在改为等 /joint_state 里 x/y/z 的 position 进 pos_tol、velocity 进 vel_tol，
-  连续 confirm_ticks 拍都满足才报到位（超时按到位继续，只告警，不卡死流程）。
-* 到位后发 /sim/gantry_arrived(UInt8=slot_id)，供 sim_vision_node 触发「拍照识别」；
-  同时发 /vision/trigger(Empty)，供真视觉节点 aic_vision_trad 触发拍照
-  （该话题是 vision 接口约定里的「采集请求」，见 docs/guides/decision_vision_interface.md）。
-  HANDLE 做完发 /sim/handle_done(UInt8=slot_id)。
+* 运动用「梯形速度剖面 + 每 20 ms 流式下发 setpoint」驱动 JointPositionController
+  （/aic/joint/{x,y,z}/cmd_pos），x/y/z 协调运动（同起同停）。
+* 到位判定用「剖面走完 + 关节反馈收敛」（position/velocity 双阈值 + 连续 N 拍）；
+  place 步用「触底判据」（M2 坑 15）。
+* 吸盘 = DetachableJoint 话题对 /sim/attach_NN、/sim/detach_NN（NN = 物料编号），
+  语义对应官方的 SuctionEnable / 关闭吸盘。
 
 参数（launch 里统一给）
 ----------------------
@@ -38,7 +41,7 @@
   place_tol         0.015 m（放到码放格时允许的「触底静差」，来自同类型叠放）
 """
 import collections
-import math
+import subprocess
 import time
 
 import rclpy
@@ -51,11 +54,12 @@ from aic_msgs.msg import MaterialTask
 from sim_layout import SimLayout, declare_number
 
 # 关节软限位，与 models/aic_gantry/model.sdf 的 <limit> 保持一致
-# y 上限 0.32 = 横梁能到达 +Y 码放条（place_zones.y = 0.30）
+# M3：z 上限 +0.03 —— 携料平移时盘底必须跨过第 3 层围边顶（0.232）；
+#     下限 -0.20 覆盖最低取放位（置物台盘顶 0.106 → z=-0.133）
 LIMITS = {
     "x": (-0.45, 0.45),
     "y": (-0.24, 0.32),
-    "z": (-0.42, 0.0),
+    "z": (-0.20, 0.03),
 }
 AXES = ("x", "y", "z")
 
@@ -103,7 +107,11 @@ class GantryController(Node):
         self.settle_s = declare_number(self, "settle_s", 0.15)
         self.dwell_s = declare_number(self, "handle_dwell_s", 0.35)
         self.travel_z = float(self.layout.gantry.get("travel_z", 0.0))
-        self.pick_z = float(self.layout.gantry.get("pick_z", -0.02))
+        # 吸盘工具基准（z_joint=0 时吸口下沿世界高度，与 model.sdf 一致）
+        self.pad_z0 = self.layout.pad_z0()
+        self.plate_th = float(self.layout.plate["thickness"])
+        # 「贴住盘顶」的关节值 = 盘顶高度 - pad_z0
+        self.pick_z = float(self.layout.staging["z"]) + self.plate_th - self.pad_z0
         # 到位判据：位置阈值来自布局文件（与真机调参同一处），速度阈值默认 10 mm/s
         self.pos_tol = declare_number(self, "pos_tol", float(self.layout.gantry.get("pos_tol", 0.003)))
         self.vel_tol = declare_number(self, "vel_tol", float(self.layout.gantry.get("vel_tol", 0.010)))
@@ -178,6 +186,17 @@ class GantryController(Node):
         # 关节反馈看门狗（见 _watch_sim_alive）
         self._js_last = None
         self._js_warn_next = 0.0
+
+        # ---- M3 轮次状态 ----
+        # 轮次 = 已收到的 GOTO 数；第 k 轮处理的物料 = material_k（生成顺序即真值序）
+        self._round = 0
+        self._staged = 0        # 当前在置物台上的物料编号（0 = 空）
+        self._picked = False    # 置物台上的物料是否已被吸盘取走
+        self._placed = collections.Counter()   # 每个类型列已放的块数（选最低空层）
+        # 置物台坐标缓存 + GOTO 停靠偏移（吸盘让出固定相机的光路）
+        self._staging_xy = self.layout.staging_xy()
+        self._goto_offset_y = float(
+            self.layout.staging.get("goto_offset_y", 0.10))
 
         # 关节反馈订阅。桥在 sim.launch.py 里（ignition.msgs.Model -> sensor_msgs/JointState）。
         # QoS 用 BEST_EFFORT：gz 侧按 sensor data 发，reliable 订阅者会「静默收不到」。
@@ -256,10 +275,11 @@ class GantryController(Node):
         slot = int(msg.slot_id)
         kind = int(msg.material_type)
         self.get_logger().info(
-            "[sim/control] 收到任务 %s slot=%d row=%d col=%d type=%d visit=%d"
-            % (action, slot, msg.row, msg.col, kind, msg.visit_index))
+            "[sim/control] 收到任务 %s slot=%d type=%d visit=%d"
+            % (action, slot, kind, msg.visit_index))
 
         if action == "GOTO":
+            self._round += 1
             self.queue.append(self._goto_steps(slot))
         elif action == "HANDLE":
             self.queue.append(self._handle_steps(slot, kind))
@@ -269,47 +289,87 @@ class GantryController(Node):
             self.get_logger().warn("[sim/control] 未知 action='%s'，忽略" % msg.action)
 
     def _goto_steps(self, slot):
-        x, y = self.layout.slot_xy(slot)
+        """M3：GOTO = 去置物台上方（到位后触发视觉识别置物台上的物料）。
+
+        供料按 slot_id：第 slot 号 GOTO 把 material_slot 从供料管传送到置物台
+        （按名传送，管内堆叠顺序与取料顺序无关；从中间抽走一块，上面的落下
+        6 mm，被管壁约束，无碍）。上一轮若识别失败（物料还留在置物台），
+        先把它传送到回收位，保证「台面同时只有一块」。
+        """
+        sx, sy, _sz = self._staging_xy
         steps = []
+        # 回收上轮遗留（识别失败未取走的物料）
+        if self._staged and not self._picked:
+            steps.append(_Step("signal", name="recycle", material=self._staged))
+            self.get_logger().warn(
+                "[sim/control] material %02d 未被取走，送回收位（决策侧该位点已 TIMEOUT）"
+                % self._staged)
+        # 上料：material_slot -> 置物台
+        n_total = self.layout.cols * self.layout.rows
+        if 1 <= slot <= n_total:
+            steps.append(_Step("signal", name="spawn", material=slot))
+            self._staged = slot
+            self._picked = False
+        else:
+            self._staged = 0
+            self.get_logger().error(
+                "[sim/control] slot %d 越界（1..%d），不上料" % (slot, n_total))
         if self.pos["z"] < self.travel_z - 1e-4:
             steps.append(_Step("move", targets={"z": self.travel_z}, speed=self.z_speed))
-        steps.append(_Step("move", targets={"x": x, "y": y}, speed=self.xy_speed))
+        # 停靠点 = 置物台 + offset：相机（固定在置物台正上方）拍完整盘面，
+        # 吸盘停在旁边不进光路；HANDLE 再平移到正上方下探
+        steps.append(_Step("move", targets={"x": sx, "y": sy + self._goto_offset_y},
+                           speed=self.xy_speed))
         steps.append(_Step("settle", seconds=self.settle_s))
         steps.append(_Step("event", name="arrived", slot=slot))
         return steps
 
     def _handle_steps(self, slot, mtype):
-        """抓取 -> 抬升 -> 搬到该类型的码放格 -> 放下 -> 松爪 -> 抬升。
+        """吸盘取料 -> 搬到该类型列的最低空层 -> 放入（每格一块，不堆叠）。
 
-        类型未知（0）或没配码放格时退化成「下探 + 停留 + 抬升」，不抓取，
-        对应决策侧 SkipSlot 的语义（未识别不放料）。
+        类型未知（0）时不下探不吸附（对应决策 SkipSlot：未识别不放），
+        物料留在置物台，下一轮 GOTO 会把它送回收位。
         """
-        zone = self.layout.place_xy(mtype)
-        steps = [
-            _Step("move", targets={"z": self.pick_z}, speed=self.z_speed),
-            _Step("dwell", seconds=self.dwell_s),
-        ]
-        if zone is None:
+        if mtype not in (1, 2, 3, 4) or self._staged == 0:
+            # 未识别：不平移不下探（物料留在置物台，下一轮 GOTO 送回收位）
+            steps = [_Step("move", targets={"z": self.travel_z}, speed=self.z_speed),
+                     _Step("event", name="handled", slot=slot)]
+            return steps
+        level = self._placed[mtype] + 1
+        cell = self.layout.rack_cell(mtype, level)
+        steps = []
+        if cell is None:
+            self.get_logger().error(
+                "[sim/control] 类型 %d 的层位已满（%d/%d），不放置"
+                % (mtype, self._placed[mtype], self.layout.rows))
             steps.append(_Step("move", targets={"z": self.travel_z}, speed=self.z_speed))
             steps.append(_Step("event", name="handled", slot=slot))
             return steps
+        cx, cy, deck_z = cell
+        # 放置目标：吸口贴住放到托盘上的盘顶
+        place_z = deck_z + self.plate_th - self.pad_z0
         self.get_logger().info(
-            "[sim/control] slot %d type=%d -> 码放格 (%.3f, %.3f)"
-            % (slot, int(mtype), zone[0], zone[1]))
+            "[sim/control] material %02d（type=%d）-> 货架列 %d 第 %d 层 (%.3f, %.3f, %.3f)"
+            % (slot, int(mtype), mtype, level, cx, cy, deck_z))
         steps += [
-            _Step("signal", name="attach", slot=slot),
-            _Step("move", targets={"z": self.travel_z}, speed=self.z_speed),
-            _Step("move", targets={"x": zone[0], "y": zone[1]}, speed=self.xy_speed),
-            # 放下用 place 而不是 move：同类型铁片会落到同一个格子里叠起来，第二块
-            # 必然比目标高一个片厚（6 mm），按「精确到位」判会一直等到 move_timeout_s
-            # （实测白等 8 s，还把下一个位点的视觉窗口挤爆，连锁出现 3 个 TIMEOUT）。
-            # place 的判据是「已触底」：位置不再变化 + 残余误差在 place_tol 内。
-            _Step("place", targets={"z": self.pick_z}, speed=self.z_speed),
+            # 从停靠偏移位平移到置物台正上方，再下探吸附
+            _Step("move", targets={"x": self._staging_xy[0],
+                                   "y": self._staging_xy[1]}, speed=self.xy_speed),
+            _Step("move", targets={"z": self.pick_z}, speed=self.z_speed),
             _Step("dwell", seconds=self.dwell_s),
-            _Step("signal", name="detach", slot=slot),
+            _Step("signal", name="attach", material=self._staged),
+            _Step("move", targets={"z": self.travel_z}, speed=self.z_speed),
+            _Step("move", targets={"x": cx, "y": cy}, speed=self.xy_speed),
+            # 放置用 place 步（触底判据）：托盘面接触后位置控制器还在压，
+            # 按精确到位判会白等到 move_timeout_s（M2 实测过的坑）
+            _Step("place", targets={"z": place_z}, speed=self.z_speed),
+            _Step("dwell", seconds=self.dwell_s),
+            _Step("signal", name="detach", material=self._staged),
             _Step("move", targets={"z": self.travel_z}, speed=self.z_speed),
             _Step("event", name="handled", slot=slot),
         ]
+        self._placed[mtype] = level
+        self._picked = True
         return steps
 
     def _home_steps(self):
@@ -473,23 +533,86 @@ class GantryController(Node):
         msg.data = float(self.pos[axis])
         self.pub[axis].publish(msg)
 
+    def _set_pose(self, model, x, y, z):
+        """用 ign service 把模型传送到指定位姿（上料 / 回收）。
+
+        为什么不用动态 create 实体：见 sim_layout.yaml magazine 段注释 ——
+        DetachableJoint 在世界加载时解析 child_model，后创建的实体绑不上。
+
+        三个必踩的坑（都是实测）：
+        1. 请求类型是 ignition.msgs.Pose（扁平字段），**不是** SetPose ——
+           `ignition.msgs.SetPose` 在 Fortress 里不存在，CLI 会报
+           "Unable to create request"，而节点里只看 rc 的话会当成网络问题。
+        2. 服务由 UserCommands 插件提供。世界没加载它时服务压根不存在，
+           客户端不报「无此服务」而是等满 timeout 报 "Service call timed out"，
+           极易误判成「动态模型不能 set_pose」。
+        3. 动态模型若仍被 DetachableJoint 焊在龙门上，set_pose 返回 true 但
+           位置不动（约束每帧把它拉回）。控制器开机已广播 12 路 detach，
+           所以这里能生效；单独调试时记得先发 /sim/detach_NN。
+
+        必须用 subprocess 继承本进程环境（含 IGN_PARTITION），否则并行
+        隔离时会把命令发到别的分区去。
+        """
+        req = ('name: "{m}" position: {{x: {x:.4f} y: {y:.4f} z: {z:.4f}}} '
+               'orientation: {{w: 1.0}}').format(m=model, x=x, y=y, z=z)
+        try:
+            r = subprocess.run(
+                ["ign", "service", "-s", "/world/aic_warehouse/set_pose",
+                 "--reqtype", "ignition.msgs.Pose",
+                 "--reptype", "ignition.msgs.Boolean",
+                 "--timeout", "2000", "--req", req],
+                capture_output=True, text=True, timeout=6.0)
+            if r.returncode != 0 or "data: true" not in (r.stdout or ""):
+                self.get_logger().error(
+                    "[sim/control] set_pose %s 失败 rc=%d：%s"
+                    % (model, r.returncode,
+                       (r.stderr or r.stdout).strip()[-200:]))
+                return False
+            return True
+        except Exception as exc:  # noqa: BLE001 - 传送失败只影响该轮，不拖垮控制器
+            self.get_logger().error("[sim/control] set_pose %s 异常：%s" % (model, exc))
+            return False
+
     def _emit(self, step):
         if step.name == "attach":
-            self._held_slot = int(step.slot)   # 先记账再发，避免松爪轮次抢跑
-            self.attach_pub[int(step.slot)].publish(Empty())
-            self.get_logger().info("[sim/control] slot %d 夹持（DetachableJoint attach）" % step.slot)
+            mat = int(step.material)
+            self._held_slot = mat   # 沿用 M2 字段名：松爪轮次跳过它
+            self.attach_pub[mat].publish(Empty())
+            self.get_logger().info(
+                "[sim/control] material %02d 吸附（吸盘使能 / DetachableJoint attach）" % mat)
         elif step.name == "detach":
-            self.detach_pub[int(step.slot)].publish(Empty())
-            if self._held_slot == int(step.slot):
+            mat = int(step.material)
+            self.detach_pub[mat].publish(Empty())
+            if self._held_slot == mat:
                 self._held_slot = 0
-            self.get_logger().info("[sim/control] slot %d 释放（DetachableJoint detach）" % step.slot)
+            self.get_logger().info(
+                "[sim/control] material %02d 释放（吸盘断气 / DetachableJoint detach）" % mat)
+        elif step.name == "spawn":
+            mat = int(step.material)
+            sx, sy, sz = self._staging_xy
+            ok = self._set_pose(
+                "material_{:02d}".format(mat), sx, sy,
+                sz + self.plate_th / 2.0 + 0.002)
+            self.get_logger().info(
+                "[sim/control] material %02d 上料 -> 置物台 %s"
+                % (mat, "OK" if ok else "失败（该轮视觉将超时）"))
+        elif step.name == "recycle":
+            mat = int(step.material)
+            rx, ry, rz = self.layout.recycle_xyz()
+            ok = self._set_pose("material_{:02d}".format(mat), rx, ry,
+                                rz + self.plate_th / 2.0 + 0.001)
+            self.get_logger().info(
+                "[sim/control] material %02d -> 回收位 %s" % (mat, "OK" if ok else "失败"))
+            if self._staged == mat:
+                self._staged = 0
         elif step.name == "arrived":
             msg = UInt8()
             msg.data = int(step.slot)
             self.arrived_pub.publish(msg)
             # 采集请求：真视觉链路靠这条触发拍照（ground-truth 桩不订阅它，无副作用）
             self.trigger_pub.publish(Empty())
-            self.get_logger().info("[sim/control] slot %d 到位，已通知 vision" % step.slot)
+            self.get_logger().info("[sim/control] 轮次 %d 到位置物台上方，已通知 vision"
+                                   % self._round)
         elif step.name == "handled":
             msg = UInt8()
             msg.data = int(step.slot)

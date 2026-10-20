@@ -1,17 +1,20 @@
 #!/usr/bin/python3
-"""从 config/sim_layout.yaml 生成 worlds/aic_warehouse.sdf（货架 + 12 块物料 + 龙门）。
+"""从 config/sim_layout.yaml 生成 worlds/aic_warehouse.sdf（M3：官方平台对齐版）。
 
 用法：
     /usr/bin/python3 scripts/gen_world.py                # 覆盖写 worlds/aic_warehouse.sdf
 
-为什么用生成而不是手写：12 个库位地贴 / 12 块缺陷物料的坐标与类型都来自
-sim_layout.yaml 的同一份数据，布局或类型分配一改，重跑本脚本即可，不必手改 XML。
-生成的 SDF 一并提交；运行时不依赖本脚本。
+M3 与 M2 的区别（对齐官方 VirtualNext 平台，参考资料 docs/vnext_pdf/manual.txt）：
+    场景 = 底板 + 立柱式龙门 + 放置货架（4 类型列 x 3 层，每格一块）
+           + 置物台（取料源）+ 供料管（12 块物料开机全叠在管里）。
+    物料不再烘在取料库位，而是运行时由 gantry_controller 逐块 set_pose 传送到
+    置物台 —— 但 12 块物料仍必须在世界 SDF 里就存在：DetachableJoint 插件
+    （挂龙门、child_model=material_NN）在世界加载时解析 child，动态 create
+    的实体绑不上（M2 实测 child 找不到时插件直接失效）。
 
 物料缺陷用几何体表达（不贴纹理）：
     1 划痕 = 细长深色薄条     2 污渍 = 扁圆深色斑
     3 缺角 = 边缘一块「缺口」  4 孔洞 = 小深色圆孔
-这样渲染稳定、俯视相机一眼可分，也便于后续传统视觉做阈值/模板算法。
 """
 import argparse
 import math
@@ -42,7 +45,8 @@ JITTER = {
 HEADER = """<?xml version="1.0" ?>
 <!--
   自动生成，勿手改：由 scripts/gen_world.py 从 config/sim_layout.yaml 生成。
-  AIC 视觉逻辑算法应用赛 · 12 库位货架 + 三轴龙门 仿真世界（Ignition Fortress）
+  AIC 视觉逻辑算法应用赛 · M3 官方平台对齐版（Ignition Fortress）：
+  底板 + 放置货架（4 类型列 x 3 层）+ 置物台 + 供料管 + 立柱式三轴龙门（吸盘）
 -->
 <sdf version="1.6">
   <world name="aic_warehouse">
@@ -76,6 +80,15 @@ HEADER = """<?xml version="1.0" ?>
          不加载时 `ign model -l` 查位姿会超时，TF/位姿类工具也全瞎 -->
     <plugin filename="ignition-gazebo-scene-broadcaster-system"
             name="ignition::gazebo::systems::SceneBroadcaster"/>
+
+    <!-- UserCommands：提供 /world/<w>/create、/remove、/set_pose 三个服务。
+         坑：不加载它时这两个服务压根不存在（`ign service -l` 只有 26 条，
+         没有 set_pose），但客户端不会立刻报「无此服务」，而是等满 timeout
+         后报 "Service call timed out" —— 极易误判成"动态模型不能 set_pose"。
+         本项目的用途：M3 上料（把 material_NN 从供料管传送到置物台）
+         与看板自由摄像机机位切换。 -->
+    <plugin filename="ignition-gazebo-user-commands-system"
+            name="ignition::gazebo::systems::UserCommands"/>
 
     <light type="directional" name="sun">
       <pose>0 0 3 0 0 0</pose>
@@ -119,20 +132,28 @@ HEADER = """<?xml version="1.0" ?>
 
 
 def slot_centers(layout):
-    """与 aic_warehouse 同一口径：id=(row-1)*cols+col，row 1 在 -Y 侧（前排）。"""
+    """放置货架格心：col 1..4 = 类型列，row/level 1..3 = 层（沿 +Z，阶梯 +Y）。
+
+    M3 里货架是放置目标（每格一块）。id 仍按 row-major 1..N 编号，仅供
+    生成器命名与核对；控制器按「类型列 + 最低空层」选格。
+    """
     rack = layout["rack"]
     cols, rows = int(rack["cols"]), int(rack["rows"])
-    px, py = float(rack["pitch_x"]), float(rack["pitch_y"])
-    cx, cy = float(rack.get("center_x", 0.0)), float(rack.get("center_y", 0.0))
+    px = float(rack["pitch_x"])
+    top_z = float(rack["top_z"])
+    lpz = float(rack["level_pitch_z"])
+    y_front = float(rack.get("y_front", rack.get("y", 0.30)))
+    step_y = float(rack.get("level_step_y", 0.0))
     out = []
-    for row in range(1, rows + 1):
+    for level in range(1, rows + 1):
         for col in range(1, cols + 1):
             out.append({
-                "id": (row - 1) * cols + col,
-                "row": row,
+                "id": (level - 1) * cols + col,
+                "level": level,
                 "col": col,
-                "x": cx + (col - (cols + 1) / 2.0) * px,
-                "y": cy + (row - (rows + 1) / 2.0) * py,
+                "x": (col - (cols + 1) / 2.0) * px,
+                "y": y_front - (level - 1) * step_y,
+                "z": top_z + (level - 1) * lpz,
             })
     return out
 
@@ -150,146 +171,311 @@ def material_types(layout, count):
     return types
 
 
-def rack_model(layout):
-    rack = layout["rack"]
-    cols, rows = int(rack["cols"]), int(rack["rows"])
-    px, py = float(rack["pitch_x"]), float(rack["pitch_y"])
-    top_z = float(rack["top_z"])
-    tile = float(rack["tile_size"])
-    tile_t = float(rack["tile_thickness"])
-    deck_x = cols * px + 0.02
-    deck_y = rows * py + 0.02
-    cx, cy = float(rack.get("center_x", 0.0)), float(rack.get("center_y", 0.0))
+def base_plate_model(layout):
+    """整机底板（官方效果图里的青色 PHOENIX CONTACT 台面的中性版）。
 
+    立柱式龙门、货架、置物台、供料管全部「站」在这块板上。
+    """
     out = [
-        '    <!-- 货架台面（{} x {} mm，上表面 z={} m） -->\n'.format(
-            int(deck_x * 1000), int(deck_y * 1000), top_z),
-        '    <model name="rack">\n',
+        '    <!-- 整机底板（1.40 x 0.90 m，上表面 z=0.02） -->\n',
+        '    <model name="base_plate">\n',
         "      <static>true</static>\n",
-        "      <pose>{} {} 0 0 0 0</pose>\n".format(cx, cy),
-        '      <link name="deck">\n',
-        '        <visual name="deck">\n',
-        "          <pose>0 0 {} 0 0 0</pose>\n".format(top_z - 0.01),
-        "          <geometry><box><size>{} {} 0.02</size></box></geometry>\n".format(
-            deck_x, deck_y),
-        "          <material>\n",
-        "            <ambient>0.55 0.56 0.58 1</ambient>\n",
-        "            <diffuse>0.62 0.63 0.65 1</diffuse>\n",
-        "            <specular>0.0 0.0 0.0 1</specular>\n",
+        '      <link name="plate">\n',
+        '        <visual name="plate">\n',
+        "          <pose>0 0 0.01 0 0 0</pose>\n",
+        "          <geometry><box><size>1.40 0.90 0.02</size></box></geometry>\n",
+        "          <material>\n"
+        "            <ambient>0.10 0.42 0.46 1</ambient>\n"
+        "            <diffuse>0.13 0.52 0.58 1</diffuse>\n"
         "          </material>\n",
         "        </visual>\n",
-        '        <collision name="deck_col">\n',
-        # 坑：这里必须和上面的 visual 同 pose。漏写时 collision 落在 link 原点
-        #     （z∈[-0.01,0.01]），与可视台面差 90 mm。铁片还是 static 时看不出来，
-        #     一改成动态就整批掉到这块「看不见的碰撞板」上（实测停在 z=0.013）。
-        "          <pose>0 0 {} 0 0 0</pose>\n".format(top_z - 0.01),
-        "          <geometry><box><size>{} {} 0.02</size></box></geometry>\n".format(
-            deck_x, deck_y),
+        '        <collision name="plate_col">\n',
+        "          <pose>0 0 0.01 0 0 0</pose>\n",
+        "          <geometry><box><size>1.40 0.90 0.02</size></box></geometry>\n",
         "        </collision>\n",
+        "      </link>\n",
+        "    </model>\n\n",
     ]
+    return "".join(out)
 
-    # 库位地贴（深色，便于俯视相机与人眼对位）
-    for s in slot_centers(layout):
+
+def rack_shelf_model(layout):
+    """放置货架：4 类型列 x 3 层，每格一块物料（官方「智能感知货架」）。
+
+    层位沿 +Y 阶梯错开（第 1 层最靠前，step = level_step_y）：
+    从上方垂放只穿过本层正上方，不会撞到上层托盘 —— 同 (x,y) 垂直堆叠时
+    实测盘撞上层托盘、放置卡死 8 s（M3 首轮联调）。
+    每层 4 个独立格口（托盘带围边、有 collision），列 x 对应类型 1..4。
+    """
+    rack = layout["rack"]
+    cols, rows = int(rack["cols"]), int(rack["rows"])
+    px = float(rack["pitch_x"])
+    lpz = float(rack["level_pitch_z"])
+    top_z = float(rack["top_z"])
+    y_front = float(rack.get("y_front", rack.get("y", 0.30)))
+    step_y = float(rack.get("level_step_y", 0.0))
+    tile = float(rack["tile_size"])
+    rim_h = float(rack["rim_height"])
+
+    width = cols * px + 0.10
+    depth = tile + 0.05 + (rows - 1) * step_y
+    y_back = y_front + tile / 2.0 + 0.02
+    panel_t = 0.015
+
+    out = [
+        '    <!-- 放置货架：{} 列 x {} 层，阶梯深度（第 1 层 y={:.2f}，步距 {:.2f}） -->\n'.format(
+            cols, rows, y_front, step_y),
+        '    <model name="rack">\n',
+        "      <static>true</static>\n",
+        '      <link name="frame">\n',
+    ]
+    # 左右侧板 + 背板（铝型材白）
+    for sx, nm in ((-1, "side_l"), (1, "side_r")):
         out.append(
-            '        <visual name="tile_{id}">\n'
+            '        <visual name="{n}">\n'
             "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
-            "          <geometry><box><size>{t} {t} {tt}</size></box></geometry>\n"
-            "          <material>\n"
-            "            <ambient>0.10 0.11 0.13 1</ambient>\n"
-            "            <diffuse>0.14 0.15 0.17 1</diffuse>\n"
-            "          </material>\n"
+            "          <geometry><box><size>{t} {d} {h}</size></box></geometry>\n"
+            "          <material><ambient>0.72 0.74 0.76 1</ambient>"
+            "<diffuse>0.82 0.84 0.86 1</diffuse></material>\n"
             "        </visual>\n".format(
-                id=s["id"], x=s["x"] - cx, y=s["y"] - cy,
-                z=top_z + tile_t / 2.0, t=tile, tt=tile_t))
-
-    out.append("      </link>\n")
-
-    legs = []
+                n=nm, x=sx * (width / 2.0 - panel_t / 2.0),
+                y=(y_front + y_back) / 2.0,
+                z=(top_z + (rows - 1) * lpz + 0.10) / 2.0 + 0.01,
+                t=panel_t, d=depth,
+                h=top_z + (rows - 1) * lpz + 0.12))
+    out.append(
+        '        <visual name="back">\n'
+        "          <pose>0 {y:.4f} {z:.4f} 0 0 0</pose>\n"
+        "          <geometry><box><size>{w} {t} {h}</size></box></geometry>\n"
+        "          <material><ambient>0.62 0.64 0.67 1</ambient>"
+        "<diffuse>0.72 0.74 0.77 1</diffuse></material>\n"
+        "        </visual>\n".format(
+            y=y_back + panel_t / 2.0,
+            z=(top_z + (rows - 1) * lpz + 0.10) / 2.0 + 0.01,
+            w=width, t=panel_t, h=top_z + (rows - 1) * lpz + 0.12))
+    # 每层：前沿横梁 + 4 个格口（托盘 collision + 四面围边 visual）
+    for s in slot_centers(layout):
+        lz = s["z"]
+        ly = s["y"]
+        if s["col"] == 1:
+            out.append(
+                '        <!-- 第 {lv} 层（z={z:.2f}, y={y:.2f}） -->\n'.format(
+                    lv=s["level"], z=lz, y=ly))
+            out.append(
+                '        <visual name="beam_{lv}">\n'
+                "          <pose>0 {y:.4f} {z:.4f} 0 0 0</pose>\n"
+                "          <geometry><box><size>{w} 0.03 0.02</size></box></geometry>\n"
+                "          <material><ambient>0.55 0.68 0.35 1</ambient>"
+                "<diffuse>0.62 0.76 0.42 1</diffuse></material>\n"
+                "        </visual>\n".format(lv=s["level"], y=ly - tile / 2.0 - 0.015,
+                                             z=lz - 0.012, w=width))
+        out.append(
+            '        <collision name="tray_{id}_col">\n'
+            "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
+            "          <geometry><box><size>{t} {t} 0.004</size></box></geometry>\n"
+            "        </collision>\n".format(
+                id=s["id"], x=s["x"], y=ly, z=lz - 0.002, t=tile))
+        out.append(
+            '        <visual name="tray_{id}">\n'
+            "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
+            "          <geometry><box><size>{t} {t} 0.004</size></box></geometry>\n"
+            "          <material><ambient>0.58 0.60 0.63 1</ambient>"
+            "<diffuse>0.68 0.70 0.73 1</diffuse></material>\n"
+            "        </visual>\n".format(id=s["id"], x=s["x"], y=ly, z=lz - 0.002, t=tile))
+        for name, dx, dy, sx_, sy_ in (
+                ("rim_xa", 0.0, -(tile / 2.0 + 0.003), tile + 0.012, 0.006),
+                ("rim_xb", 0.0, +(tile / 2.0 + 0.003), tile + 0.012, 0.006),
+                ("rim_ya", -(tile / 2.0 + 0.003), 0.0, 0.006, tile + 0.012),
+                ("rim_yb", +(tile / 2.0 + 0.003), 0.0, 0.006, tile + 0.012)):
+            out.append(
+                '        <visual name="c{id}_{n}">\n'
+                "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
+                "          <geometry><box><size>{sx} {sy} {h}</size></box></geometry>\n"
+                "          <material><ambient>0.22 0.24 0.27 1</ambient>"
+                "<diffuse>0.28 0.30 0.33 1</diffuse></material>\n"
+                "        </visual>\n".format(
+                    id=s["id"], n=name, x=s["x"] + dx, y=ly + dy, z=lz + rim_h / 2.0,
+                    sx=sx_, sy=sy_, h=rim_h))
+    # 四根货架立腿（站到底板上表面 0.02）
     for sx in (-1, 1):
         for sy in (-1, 1):
-            legs.append(
+            out.append(
                 '        <visual name="leg_{sx}_{sy}">\n'
                 "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
-                "          <geometry><box><size>0.04 0.04 {h}</size></box></geometry>\n"
+                "          <geometry><box><size>0.03 0.03 {h}</size></box></geometry>\n"
                 "          <material><ambient>0.30 0.31 0.33 1</ambient>"
                 "<diffuse>0.36 0.37 0.39 1</diffuse></material>\n"
                 "        </visual>\n".format(
                     sx=sx, sy=sy,
-                    x=sx * (deck_x / 2.0 - 0.05), y=sy * (deck_y / 2.0 - 0.05),
-                    z=(top_z - 0.02) / 2.0, h=top_z - 0.02))
-    out.append('      <link name="legs">\n' + "".join(legs) + "      </link>\n")
-    out.append("    </model>\n\n")
+                    x=sx * (width / 2.0 - 0.03), y=y_front + sy * (depth / 2.0 - 0.03),
+                    z=0.02 + (top_z + (rows - 1) * lpz + 0.06) / 2.0,
+                    h=top_z + (rows - 1) * lpz + 0.06))
+    out.append("      </link>\n    </model>\n\n")
     return "".join(out)
 
 
-def place_table(layout):
-    """分类码放条（+Y 侧）：一块台面 + 4 个格口（地贴 + 围边）。
-
-    真机台面 1000x500 已被 12 库位占满，仿真为跑通「搬运到按类型的目标格」才加这条。
-    坐标全部来自 sim_layout.yaml 的 place_zones 段。
-    """
-    pz = layout.get("place_zones")
-    if not pz:
-        return ""
-    rack = layout["rack"]
-    top_z = float(rack["top_z"])
-    cz = float(pz["z"])
-    py = float(pz["y"])
-    tile = float(pz["tile_size"])
-    rim_h = float(pz["rim_height"])
-    xs = [float(v) for v in pz["xs"]]
-
-    depth = tile + 0.02
-    width = (xs[-1] - xs[0]) + tile + 0.06
+def staging_table_model(layout):
+    """置物台（取料源）：每轮生成一块物料于此，相机俯拍识别后吸盘取走。"""
+    st = layout["staging"]
+    x, y, z = float(st["x"]), float(st["y"]), float(st["z"])
     out = [
-        '    <!-- 分类码放条（{} x {} mm，上表面 z={}） -->\n'.format(
-            int(width * 1000), int(depth * 1000), cz),
-        '    <model name="place_table">\n',
+        '    <!-- 置物台（取料源，台面 z={:.2f}） -->\n'.format(z),
+        '    <model name="staging_table">\n',
         "      <static>true</static>\n",
-        '      <link name="deck">\n',
-        '        <visual name="deck">\n',
-        "          <pose>0 {:.4f} {:.4f} 0 0 0</pose>\n".format(py, cz - 0.01),
-        "          <geometry><box><size>{} {} 0.02</size></box></geometry>\n".format(width, depth),
-        "          <material>\n",
-        "            <ambient>0.55 0.56 0.58 1</ambient>\n",
-        "            <diffuse>0.62 0.63 0.65 1</diffuse>\n",
-        "            <specular>0.0 0.0 0.0 1</specular>\n",
-        "          </material>\n",
-        "        </visual>\n",
-        '        <collision name="deck_col">\n',
-        # 同 rack：collision 必须跟 visual 同 pose。这里连 Y 也要给，
-        # 否则碰撞板落在 y=0（货架下方），码放到 y=0.30 的铁片会直接穿到地面。
-        "          <pose>0 {:.4f} {:.4f} 0 0 0</pose>\n".format(py, cz - 0.01),
-        "          <geometry><box><size>{} {} 0.02</size></box></geometry>\n".format(width, depth),
-        "        </collision>\n",
+        '      <link name="table">\n',
+        '        <visual name="top">\n'
+        "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
+        "          <geometry><box><size>0.16 0.16 0.01</size></box></geometry>\n"
+        "          <material><ambient>0.10 0.11 0.13 1</ambient>"
+        "<diffuse>0.14 0.15 0.17 1</diffuse></material>\n"
+        "        </visual>\n".format(x=x, y=y, z=z - 0.005),
+        '        <collision name="top_col">\n'
+        "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
+        "          <geometry><box><size>0.16 0.16 0.01</size></box></geometry>\n"
+        "        </collision>\n".format(x=x, y=y, z=z - 0.005),
+        '        <visual name="pedestal">\n'
+        "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
+        "          <geometry><box><size>0.10 0.10 0.08</size></box></geometry>\n"
+        "          <material><ambient>0.30 0.31 0.33 1</ambient>"
+        "<diffuse>0.36 0.37 0.39 1</diffuse></material>\n"
+        # 坑：立柱顶面原来与台面底面共面（z 0.09 对 0.09），渲染 z-fighting，
+        # 在俯视相机里表现为台面中央一块「亮方块」——把盘的高对比背景打掉一半，
+        # 真视觉的环对比判据直接失效。立柱下移 2 mm 藏到台面下方。
+        "        </visual>\n".format(x=x, y=y, z=0.048),
+        "      </link>\n    </model>\n\n",
     ]
-    # 4 个格口：浅色地贴 + 四边围边，方便人眼/回放区分类型
-    for i, x in enumerate(xs):
+    return "".join(out)
+
+
+def magazine_model(layout):
+    """供料管：12 块物料开机时全部叠在管内，运行时逐块传送到置物台。
+
+    为什么不用 ign service 动态 create 实体：DetachableJoint 插件（挂龙门）
+    在世界加载时就解析 child_model 并建约束；后创建的实体绑不上（M2 实测
+    child 找不到时插件直接失效）。所以物料常驻世界，只是「藏在管里」。
+    """
+    mg = layout["magazine"]
+    x, y = float(mg["x"]), float(mg["y"])
+    fz = float(mg["floor_z"])
+    th = float(mg["tube_h"])
+    out = [
+        '    <!-- 供料管（12 块物料待命位，管底 z={:.3f}） -->\n'.format(fz),
+        '    <model name="magazine">\n',
+        "      <static>true</static>\n",
+        '      <link name="tube">\n',
+    ]
+    # 底座 + 管底（collision：物料叠在它上面）
+    out.append(
+        '        <visual name="pedestal">\n'
+        "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
+        "          <geometry><box><size>0.12 0.12 0.065</size></box></geometry>\n"
+        "          <material><ambient>0.30 0.31 0.33 1</ambient>"
+        "<diffuse>0.36 0.37 0.39 1</diffuse></material>\n"
+        "        </visual>\n".format(x=x, y=y, z=0.02 + 0.065 / 2.0))
+    out.append(
+        '        <collision name="floor_col">\n'
+        "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
+        "          <geometry><box><size>0.11 0.11 0.01</size></box></geometry>\n"
+        "        </collision>\n"
+        '        <visual name="floor">\n'
+        "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
+        "          <geometry><box><size>0.11 0.11 0.01</size></box></geometry>\n"
+        "          <material><ambient>0.40 0.42 0.44 1</ambient>"
+        "<diffuse>0.48 0.50 0.52 1</diffuse></material>\n"
+        "        </visual>\n".format(x=x, y=y, z=fz - 0.005))
+    # 四面管壁（内空 0.088，盘径 0.08，单边 4 mm 余量）
+    wall_t, inner = 0.012, 0.088
+    half = inner / 2.0 + wall_t / 2.0
+    for name, dx, dy, sx, sy in (
+            ("wall_n", 0.0, +half, inner + 2 * wall_t, wall_t),
+            ("wall_s", 0.0, -half, inner + 2 * wall_t, wall_t),
+            ("wall_e", +half, 0.0, wall_t, inner + 2 * wall_t),
+            ("wall_w", -half, 0.0, wall_t, inner + 2 * wall_t)):
         out.append(
-            '        <visual name="zone_{i}">\n'
+            '        <visual name="{n}">\n'
             "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
-            "          <geometry><box><size>{t} {t} 0.002</size></box></geometry>\n"
-            "          <material><ambient>0.28 0.30 0.33 1</ambient>"
-            "<diffuse>0.34 0.36 0.39 1</diffuse></material>\n"
+            "          <geometry><box><size>{sx} {sy} {h}</size></box></geometry>\n"
+            "          <material><ambient>0.45 0.47 0.50 1</ambient>"
+            "<diffuse>0.55 0.57 0.60 1</diffuse></material>\n"
             "        </visual>\n".format(
-                i=i + 1, x=x, y=py, z=cz + 0.001, t=tile))
-        # 围边：两根沿 X、两根沿 Y，压在地贴四边
-        for name, dx, dy, sx, sy in (
-                ("rim_xa", 0.0, -(tile / 2.0), tile, 0.006),
-                ("rim_xb", 0.0, +(tile / 2.0), tile, 0.006),
-                ("rim_ya", -(tile / 2.0), 0.0, 0.006, tile),
-                ("rim_yb", +(tile / 2.0), 0.0, 0.006, tile)):
-            out.append(
-                '        <visual name="z{i}_{n}">\n'
-                "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
-                "          <geometry><box><size>{sx} {sy} {h}</size></box></geometry>\n"
-                "          <material><ambient>0.20 0.22 0.24 1</ambient>"
-                "<diffuse>0.26 0.28 0.30 1</diffuse></material>\n"
-                "        </visual>\n".format(
-                    i=i + 1, n=name, x=x + dx, y=py + dy, z=cz + rim_h / 2.0,
-                    sx=sx, sy=sy, h=rim_h))
-    out.append("      </link>\n")
-    out.append("    </model>\n\n")
+                n=name, x=x + dx, y=y + dy, z=fz + th / 2.0, sx=sx, sy=sy, h=th))
+    out.append("      </link>\n    </model>\n\n")
+    return "".join(out)
+
+
+def recycle_marker(layout):
+    """回收位标记（仅 visual 圆环，物料识别失败未取走时被传送到这里）。"""
+    rc = layout["recycle"]
+    x, y, z = float(rc["x"]), float(rc["y"]), float(rc["z"])
+    out = [
+        '    <!-- 回收位标记（识别失败物料的去处） -->\n',
+        '    <model name="recycle_marker">\n',
+        "      <static>true</static>\n",
+        '      <link name="mark">\n',
+        '        <visual name="ring">\n'
+        "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
+        "          <geometry><cylinder><radius>0.055</radius>"
+        "<length>0.002</length></cylinder></geometry>\n"
+        "          <material><ambient>0.55 0.35 0.10 1</ambient>"
+        "<diffuse>0.65 0.42 0.12 1</diffuse></material>\n"
+        "        </visual>\n".format(x=x, y=y, z=z + 0.001),
+        "      </link>\n    </model>\n\n",
+    ]
+    return "".join(out)
+
+
+def ee_cam_model(layout):
+    """末端相机（M3 固定式）：装在置物台正上方朝下，拍照在前、下探在后。
+
+    为什么从 z_carriage 挪到固定支架（对齐官方平台 img-006 的取景）：
+    吸盘下探取料时正好悬在盘上方 —— 相机若跟在吸盘后面，盘中心会被
+    吸盘遮住（盘内缺陷判据全瞎）。固定式 + GOTO 停靠偏移位（staging.
+    goto_offset_y）让吸盘让出光路，识别的是完整盘面。
+    高度 = 置物台盘顶 + 0.26 m（盘半径 ~83 px，与 M2 阈值标定一致）。
+    """
+    cam = layout.get("camera") or {}
+    st = layout["staging"]
+    m = cam.get("mount")
+    if m and len(m) == 6:
+        x, y, z, rr, p, yaw = [float(v) for v in m]
+    else:
+        x, y = float(st["x"]), float(st["y"])
+        z = float(st["z"]) + 0.006 + 0.26
+        rr, p, yaw = 0.0, 1.5708, -1.5708
+    fov = float(cam.get("fov_h", 1.047))
+    w = int(cam.get("width", 640))
+    h = int(cam.get("height", 480))
+    rate = float(cam.get("update_rate", 20.0))
+    out = [
+        '    <!-- 末端相机（固定式，置物台正上方朝下；话题 /camera/image 不变） -->\n',
+        '    <model name="ee_cam">\n',
+        "      <static>true</static>\n",
+        "      <pose>{} {} {} {} {} {}</pose>\n".format(
+            *["{:.4f}".format(v) for v in (x, y, z, rr, p, yaw)]),
+        '      <link name="body">\n',
+        # 机身 visual 必须让出传感器光路：gz 会渲染本模型的 visual（M2 立柱
+        # 挪位的同款坑），机身压在 sensor 原点上的话相机拍到的全是自己的壳。
+        '        <visual name="body">\n'
+        "          <pose>0 0 0.035 0 0 0</pose>\n"
+        "          <geometry><box><size>0.06 0.06 0.04</size></box></geometry>\n"
+        "          <material><ambient>0.15 0.15 0.17 1</ambient>"
+        "<diffuse>0.20 0.20 0.22 1</diffuse></material>\n"
+        "        </visual>\n",
+        '        <sensor name="camera" type="camera">\n',
+        "          <pose>0 0 0 0 0 0</pose>\n",
+        "          <always_on>1</always_on>\n",
+        "          <visualize>false</visualize>\n",
+        "          <update_rate>{}</update_rate>\n".format(rate),
+        '          <topic>/camera/image</topic>\n',
+        "          <camera>\n",
+        "            <horizontal_fov>{}</horizontal_fov>\n".format(fov),
+        "            <image><width>{}</width><height>{}</height>"
+        "<format>R8G8B8</format></image>\n".format(w, h),
+        "            <clip><near>0.005</near><far>4.0</far></clip>\n",
+        "          </camera>\n",
+        "        </sensor>\n",
+        "      </link>\n    </model>\n\n",
+    ]
     return "".join(out)
 
 
@@ -415,21 +601,23 @@ def defect_visual(mtype, r, d, rng):
 
 
 def plate_model(layout, slot, mtype, jitter_seed=None):
-    """一块圆形铁片 + 该类缺陷的几何表达。
+    """一块圆形物料 + 该类缺陷的几何表达（M3：开机时叠在供料管里待命）。
 
-    动态模型（有质量/碰撞/摩擦）：HANDLE 时由 DetachableJoint 吸附到 z_carriage，
-    抬升后跟着走，放到目标格再松开。早前是 static，做不了抓取。
+    动态模型（有质量/碰撞/摩擦）：运行时被 set_pose 传送到置物台，
+    HANDLE 时由 DetachableJoint 吸附到 z_carriage（吸盘），放入货架格后松开。
+    叠放顺序：material_01 在最上面（先被取走），往下依次 02..12。
     """
     plate = layout["plate"]
-    rack = layout["rack"]
+    mg = layout["magazine"]
     r = float(plate["diameter"]) / 2.0
     th = float(plate["thickness"])
-    # 库位地贴只有 visual、没有 collision，铁片实际落在台面板上表面 top_z。
-    base_z = float(rack["top_z"])
-    # 抬高 0.2 mm：避免出生瞬间与地贴互相穿透，物理会把它弹一下
-    cz = base_z + th / 2.0 + 0.0002
-    name = "material_{:02d}_{}".format(slot["id"], TYPE_NAMES[mtype])
-    d = th / 2.0  # 铁片顶面在 link 内的 z
+    # 管内叠放：01 在顶。留 0.5 mm 间隙避免出生互相穿透；重力会让它们自然落实
+    spacing = th + 0.0005
+    idx = int(slot["id"])
+    cz = (float(mg["floor_z"]) + th / 2.0 + 0.002
+          + (12 - idx) * spacing)
+    name = "material_{:02d}".format(idx)
+    d = th / 2.0  # 盘顶面在 link 内的 z
     mass = float(plate.get("mass", 0.05))
     ixx = mass * (3.0 * r * r + th * th) / 12.0
     izz = mass * r * r / 2.0
@@ -437,7 +625,8 @@ def plate_model(layout, slot, mtype, jitter_seed=None):
     out = [
         '    <model name="{}">\n'.format(name),
         "      <static>false</static>\n",
-        "      <pose>{:.4f} {:.4f} {:.4f} 0 0 0</pose>\n".format(slot["x"], slot["y"], cz),
+        "      <pose>{:.4f} {:.4f} {:.4f} 0 0 0</pose>\n".format(
+            float(mg["x"]), float(mg["y"]), cz),
         '      <link name="disc">\n',
         '        <inertial>\n',
         "          <mass>{}</mass>\n".format(mass),
@@ -493,21 +682,12 @@ def gantry_model(layout, types, slots):
     end = text.rindex("</model>") + len("</model>")
     block = text[start:end]
 
-    # 相机安装高度：SDF 没有模板变量，由这里做一次定点替换（sim_layout.yaml camera.mount_z）。
-    # 只替换 <sensor name="camera"> 后面那一行 pose 的 z，其它 pose 不动。
-    # 关掉时（None）保持 model.sdf 原值 -0.18，格式化去尾零后与原文逐字节一致。
-    cam_z = (layout.get("camera") or {}).get("mount_z")
-    if cam_z is not None:
-        z_txt = ("%.4f" % float(cam_z)).rstrip("0").rstrip(".")
-        block, n = re.subn(
-            r'(<sensor name="camera" type="camera">\s*<pose>0 0 )[-0-9.]+( 0 1\.5708 -1\.5708</pose>)',
-            lambda m: m.group(1) + z_txt + m.group(2), block, count=1)
-        if n != 1:
-            raise SystemExit("[gen_world] 没找到相机 pose，mount_z 替换失败（model.sdf 改过？）")
+    # M3：相机已移出龙门（固定式 ee_cam，见 ee_cam_model），mount_z 替换逻辑删除。
+    # model.sdf 里不再有 <sensor name="camera">，若又加回去需要重新接上替换逻辑。
 
     plugs = []
     for s, t in zip(slots, types):
-        name = "material_{:02d}_{}".format(s["id"], TYPE_NAMES[t])
+        name = "material_{:02d}".format(s["id"])
         plugs.append(
             '    <plugin filename="ignition-gazebo-detachable-joint-system"\n'
             '            name="ignition::gazebo::systems::DetachableJoint">\n'
@@ -528,12 +708,15 @@ def build_sdf(layout, seed=None):
     slots = slot_centers(layout)
     types = material_types(layout, len(slots))
 
-    out = [HEADER, rack_model(layout), place_table(layout), scene_cam(layout)]
-    out.append("    <!-- ===== 12 块圆形铁片（动态；类型见 sim_layout.yaml materials.types）===== -->\n")
+    out = [HEADER, base_plate_model(layout), rack_shelf_model(layout),
+           staging_table_model(layout), magazine_model(layout),
+           recycle_marker(layout), ee_cam_model(layout), scene_cam(layout)]
+    out.append("    <!-- ===== 12 块圆形物料（开机叠在供料管里，运行时逐块上料；"
+               "类型 = materials.types[序号-1]）===== -->\n")
     for s, t in zip(slots, types):
         out.append(plate_model(layout, s, t, seed))
 
-    out.append("  <!-- 三轴龙门（关节零位 = 相机在货架中心正上方、末端最高位） -->\n")
+    out.append("  <!-- 三轴龙门（关节零位 = 吸盘最高位 0.239 / 相机 0.365） -->\n")
     out.append(gantry_model(layout, types, slots))
     out.append("  </world>\n</sdf>\n")
     return "".join(out), types
@@ -561,7 +744,7 @@ def main(argv=None):
     seed = args.seed if args.seed is not None else int(
         (layout.get("materials") or {}).get("jitter_seed", 0) or 0)
     print("[gen_world] 已生成 {}（{} 字节，jitter_seed={}）".format(args.out, len(sdf), seed))
-    print("[gen_world] 12 库位类型（slot 1..12）：{}".format(list(types)))
+    print("[gen_world] 物料生成顺序类型（material 1..12）：{}".format(list(types)))
     return 0
 
 

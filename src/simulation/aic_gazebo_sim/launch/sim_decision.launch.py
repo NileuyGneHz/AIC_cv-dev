@@ -67,9 +67,13 @@ def generate_launch_description():
         #     8.0 只剩 0.1 s 余量，于是 12 位点里稳定丢 3 个（6/10/12）。给到 12.0。
         #     窗口偏小的后果不只是「慢」，更是**迟到的结果被下一个位点误收**
         #     （类型错位，结果表还显示 OK）。所以这里留足余量。
-        #     代价：真失败时要空等 12 s。真机 HANDLE 不含搬运（夹爪一开一合），
-        #     实际参数应以真机节拍重定，这里只是仿真侧的自验配置。
-        DeclareLaunchArgument("vision_timeout_s", default_value="12.0",
+        #     代价：真失败时要空等 30 s。M3 实测（真视觉一轮）：
+        #       GOTO(slot N) 到达 1551.12 → 控制器先做完 HANDLE(slot N-1) 到
+        #       1563.93（12.8 s）→ 再上料 + 走到置物台，到位 1566.59（15.5 s）。
+        #       15.0 正好切在边界上，12 位点稳定丢 2 个（2/8 号）。
+        #     所以按「最坏队列时延」给到 30 s，而不是按 HANDLE 典型值估算。
+        #     真机 HANDLE 只有夹爪一开一合，实际参数应以真机节拍重定。
+        DeclareLaunchArgument("vision_timeout_s", default_value="30.0",
                               description="单个位点等识别结果的上限（须 > HANDLE + GOTO + 视觉延迟）"),
         DeclareLaunchArgument("vision_backend", default_value="gt",
                               description="gt = ground-truth 桩；trad = 传统视觉（看相机图）"),

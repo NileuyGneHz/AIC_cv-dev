@@ -1,7 +1,8 @@
 <?xml version="1.0" ?>
 <!--
   自动生成，勿手改：由 scripts/gen_world.py 从 config/sim_layout.yaml 生成。
-  AIC 视觉逻辑算法应用赛 · 12 库位货架 + 三轴龙门 仿真世界（Ignition Fortress）
+  AIC 视觉逻辑算法应用赛 · M3 官方平台对齐版（Ignition Fortress）：
+  底板 + 放置货架（4 类型列 x 3 层）+ 置物台 + 供料管 + 立柱式三轴龙门（吸盘）
 -->
 <sdf version="1.6">
   <world name="aic_warehouse">
@@ -35,6 +36,15 @@
          不加载时 `ign model -l` 查位姿会超时，TF/位姿类工具也全瞎 -->
     <plugin filename="ignition-gazebo-scene-broadcaster-system"
             name="ignition::gazebo::systems::SceneBroadcaster"/>
+
+    <!-- UserCommands：提供 /world/<w>/create、/remove、/set_pose 三个服务。
+         坑：不加载它时这两个服务压根不存在（`ign service -l` 只有 26 条，
+         没有 set_pose），但客户端不会立刻报「无此服务」，而是等满 timeout
+         后报 "Service call timed out" —— 极易误判成"动态模型不能 set_pose"。
+         本项目的用途：M3 上料（把 material_NN 从供料管传送到置物台）
+         与看板自由摄像机机位切换。 -->
+    <plugin filename="ignition-gazebo-user-commands-system"
+            name="ignition::gazebo::systems::UserCommands"/>
 
     <light type="directional" name="sun">
       <pose>0 0 3 0 0 0</pose>
@@ -74,262 +84,529 @@
       </link>
     </model>
 
-    <!-- 货架台面（1020 x 520 mm，上表面 z=0.1 m） -->
+    <!-- 整机底板（1.40 x 0.90 m，上表面 z=0.02） -->
+    <model name="base_plate">
+      <static>true</static>
+      <link name="plate">
+        <visual name="plate">
+          <pose>0 0 0.01 0 0 0</pose>
+          <geometry><box><size>1.40 0.90 0.02</size></box></geometry>
+          <material>
+            <ambient>0.10 0.42 0.46 1</ambient>
+            <diffuse>0.13 0.52 0.58 1</diffuse>
+          </material>
+        </visual>
+        <collision name="plate_col">
+          <pose>0 0 0.01 0 0 0</pose>
+          <geometry><box><size>1.40 0.90 0.02</size></box></geometry>
+        </collision>
+      </link>
+    </model>
+
+    <!-- 放置货架：4 列 x 3 层，阶梯深度（第 1 层 y=0.31，步距 0.11） -->
     <model name="rack">
       <static>true</static>
-      <pose>0.0 0.0 0 0 0 0</pose>
-      <link name="deck">
-        <visual name="deck">
-          <pose>0 0 0.09000000000000001 0 0 0</pose>
-          <geometry><box><size>1.02 0.5201 0.02</size></box></geometry>
-          <material>
-            <ambient>0.55 0.56 0.58 1</ambient>
-            <diffuse>0.62 0.63 0.65 1</diffuse>
-            <specular>0.0 0.0 0.0 1</specular>
-          </material>
+      <link name="frame">
+        <visual name="side_l">
+          <pose>-0.5425 0.3500 0.1700 0 0 0</pose>
+          <geometry><box><size>0.015 0.39 0.33999999999999997</size></box></geometry>
+          <material><ambient>0.72 0.74 0.76 1</ambient><diffuse>0.82 0.84 0.86 1</diffuse></material>
         </visual>
-        <collision name="deck_col">
-          <pose>0 0 0.09000000000000001 0 0 0</pose>
-          <geometry><box><size>1.02 0.5201 0.02</size></box></geometry>
+        <visual name="side_r">
+          <pose>0.5425 0.3500 0.1700 0 0 0</pose>
+          <geometry><box><size>0.015 0.39 0.33999999999999997</size></box></geometry>
+          <material><ambient>0.72 0.74 0.76 1</ambient><diffuse>0.82 0.84 0.86 1</diffuse></material>
+        </visual>
+        <visual name="back">
+          <pose>0 0.3975 0.1700 0 0 0</pose>
+          <geometry><box><size>1.1 0.015 0.33999999999999997</size></box></geometry>
+          <material><ambient>0.62 0.64 0.67 1</ambient><diffuse>0.72 0.74 0.77 1</diffuse></material>
+        </visual>
+        <!-- 第 1 层（z=0.10, y=0.31） -->
+        <visual name="beam_1">
+          <pose>0 0.2350 0.0880 0 0 0</pose>
+          <geometry><box><size>1.1 0.03 0.02</size></box></geometry>
+          <material><ambient>0.55 0.68 0.35 1</ambient><diffuse>0.62 0.76 0.42 1</diffuse></material>
+        </visual>
+        <collision name="tray_1_col">
+          <pose>-0.3750 0.3100 0.0980 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
         </collision>
-        <visual name="tile_1">
-          <pose>-0.3750 -0.1667 0.1015 0 0 0</pose>
-          <geometry><box><size>0.115 0.115 0.003</size></box></geometry>
-          <material>
-            <ambient>0.10 0.11 0.13 1</ambient>
-            <diffuse>0.14 0.15 0.17 1</diffuse>
-          </material>
+        <visual name="tray_1">
+          <pose>-0.3750 0.3100 0.0980 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
+          <material><ambient>0.58 0.60 0.63 1</ambient><diffuse>0.68 0.70 0.73 1</diffuse></material>
         </visual>
-        <visual name="tile_2">
-          <pose>-0.1250 -0.1667 0.1015 0 0 0</pose>
-          <geometry><box><size>0.115 0.115 0.003</size></box></geometry>
-          <material>
-            <ambient>0.10 0.11 0.13 1</ambient>
-            <diffuse>0.14 0.15 0.17 1</diffuse>
-          </material>
+        <visual name="c1_rim_xa">
+          <pose>-0.3750 0.2470 0.1060 0 0 0</pose>
+          <geometry><box><size>0.132 0.006 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
         </visual>
-        <visual name="tile_3">
-          <pose>0.1250 -0.1667 0.1015 0 0 0</pose>
-          <geometry><box><size>0.115 0.115 0.003</size></box></geometry>
-          <material>
-            <ambient>0.10 0.11 0.13 1</ambient>
-            <diffuse>0.14 0.15 0.17 1</diffuse>
-          </material>
+        <visual name="c1_rim_xb">
+          <pose>-0.3750 0.3730 0.1060 0 0 0</pose>
+          <geometry><box><size>0.132 0.006 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
         </visual>
-        <visual name="tile_4">
-          <pose>0.3750 -0.1667 0.1015 0 0 0</pose>
-          <geometry><box><size>0.115 0.115 0.003</size></box></geometry>
-          <material>
-            <ambient>0.10 0.11 0.13 1</ambient>
-            <diffuse>0.14 0.15 0.17 1</diffuse>
-          </material>
+        <visual name="c1_rim_ya">
+          <pose>-0.4380 0.3100 0.1060 0 0 0</pose>
+          <geometry><box><size>0.006 0.132 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
         </visual>
-        <visual name="tile_5">
-          <pose>-0.3750 0.0000 0.1015 0 0 0</pose>
-          <geometry><box><size>0.115 0.115 0.003</size></box></geometry>
-          <material>
-            <ambient>0.10 0.11 0.13 1</ambient>
-            <diffuse>0.14 0.15 0.17 1</diffuse>
-          </material>
+        <visual name="c1_rim_yb">
+          <pose>-0.3120 0.3100 0.1060 0 0 0</pose>
+          <geometry><box><size>0.006 0.132 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
         </visual>
-        <visual name="tile_6">
-          <pose>-0.1250 0.0000 0.1015 0 0 0</pose>
-          <geometry><box><size>0.115 0.115 0.003</size></box></geometry>
-          <material>
-            <ambient>0.10 0.11 0.13 1</ambient>
-            <diffuse>0.14 0.15 0.17 1</diffuse>
-          </material>
+        <collision name="tray_2_col">
+          <pose>-0.1250 0.3100 0.0980 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
+        </collision>
+        <visual name="tray_2">
+          <pose>-0.1250 0.3100 0.0980 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
+          <material><ambient>0.58 0.60 0.63 1</ambient><diffuse>0.68 0.70 0.73 1</diffuse></material>
         </visual>
-        <visual name="tile_7">
-          <pose>0.1250 0.0000 0.1015 0 0 0</pose>
-          <geometry><box><size>0.115 0.115 0.003</size></box></geometry>
-          <material>
-            <ambient>0.10 0.11 0.13 1</ambient>
-            <diffuse>0.14 0.15 0.17 1</diffuse>
-          </material>
+        <visual name="c2_rim_xa">
+          <pose>-0.1250 0.2470 0.1060 0 0 0</pose>
+          <geometry><box><size>0.132 0.006 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
         </visual>
-        <visual name="tile_8">
-          <pose>0.3750 0.0000 0.1015 0 0 0</pose>
-          <geometry><box><size>0.115 0.115 0.003</size></box></geometry>
-          <material>
-            <ambient>0.10 0.11 0.13 1</ambient>
-            <diffuse>0.14 0.15 0.17 1</diffuse>
-          </material>
+        <visual name="c2_rim_xb">
+          <pose>-0.1250 0.3730 0.1060 0 0 0</pose>
+          <geometry><box><size>0.132 0.006 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
         </visual>
-        <visual name="tile_9">
-          <pose>-0.3750 0.1667 0.1015 0 0 0</pose>
-          <geometry><box><size>0.115 0.115 0.003</size></box></geometry>
-          <material>
-            <ambient>0.10 0.11 0.13 1</ambient>
-            <diffuse>0.14 0.15 0.17 1</diffuse>
-          </material>
+        <visual name="c2_rim_ya">
+          <pose>-0.1880 0.3100 0.1060 0 0 0</pose>
+          <geometry><box><size>0.006 0.132 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
         </visual>
-        <visual name="tile_10">
-          <pose>-0.1250 0.1667 0.1015 0 0 0</pose>
-          <geometry><box><size>0.115 0.115 0.003</size></box></geometry>
-          <material>
-            <ambient>0.10 0.11 0.13 1</ambient>
-            <diffuse>0.14 0.15 0.17 1</diffuse>
-          </material>
+        <visual name="c2_rim_yb">
+          <pose>-0.0620 0.3100 0.1060 0 0 0</pose>
+          <geometry><box><size>0.006 0.132 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
         </visual>
-        <visual name="tile_11">
-          <pose>0.1250 0.1667 0.1015 0 0 0</pose>
-          <geometry><box><size>0.115 0.115 0.003</size></box></geometry>
-          <material>
-            <ambient>0.10 0.11 0.13 1</ambient>
-            <diffuse>0.14 0.15 0.17 1</diffuse>
-          </material>
+        <collision name="tray_3_col">
+          <pose>0.1250 0.3100 0.0980 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
+        </collision>
+        <visual name="tray_3">
+          <pose>0.1250 0.3100 0.0980 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
+          <material><ambient>0.58 0.60 0.63 1</ambient><diffuse>0.68 0.70 0.73 1</diffuse></material>
         </visual>
-        <visual name="tile_12">
-          <pose>0.3750 0.1667 0.1015 0 0 0</pose>
-          <geometry><box><size>0.115 0.115 0.003</size></box></geometry>
-          <material>
-            <ambient>0.10 0.11 0.13 1</ambient>
-            <diffuse>0.14 0.15 0.17 1</diffuse>
-          </material>
+        <visual name="c3_rim_xa">
+          <pose>0.1250 0.2470 0.1060 0 0 0</pose>
+          <geometry><box><size>0.132 0.006 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
         </visual>
-      </link>
-      <link name="legs">
+        <visual name="c3_rim_xb">
+          <pose>0.1250 0.3730 0.1060 0 0 0</pose>
+          <geometry><box><size>0.132 0.006 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c3_rim_ya">
+          <pose>0.0620 0.3100 0.1060 0 0 0</pose>
+          <geometry><box><size>0.006 0.132 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c3_rim_yb">
+          <pose>0.1880 0.3100 0.1060 0 0 0</pose>
+          <geometry><box><size>0.006 0.132 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <collision name="tray_4_col">
+          <pose>0.3750 0.3100 0.0980 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
+        </collision>
+        <visual name="tray_4">
+          <pose>0.3750 0.3100 0.0980 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
+          <material><ambient>0.58 0.60 0.63 1</ambient><diffuse>0.68 0.70 0.73 1</diffuse></material>
+        </visual>
+        <visual name="c4_rim_xa">
+          <pose>0.3750 0.2470 0.1060 0 0 0</pose>
+          <geometry><box><size>0.132 0.006 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c4_rim_xb">
+          <pose>0.3750 0.3730 0.1060 0 0 0</pose>
+          <geometry><box><size>0.132 0.006 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c4_rim_ya">
+          <pose>0.3120 0.3100 0.1060 0 0 0</pose>
+          <geometry><box><size>0.006 0.132 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c4_rim_yb">
+          <pose>0.4380 0.3100 0.1060 0 0 0</pose>
+          <geometry><box><size>0.006 0.132 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <!-- 第 2 层（z=0.16, y=0.20） -->
+        <visual name="beam_2">
+          <pose>0 0.1250 0.1480 0 0 0</pose>
+          <geometry><box><size>1.1 0.03 0.02</size></box></geometry>
+          <material><ambient>0.55 0.68 0.35 1</ambient><diffuse>0.62 0.76 0.42 1</diffuse></material>
+        </visual>
+        <collision name="tray_5_col">
+          <pose>-0.3750 0.2000 0.1580 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
+        </collision>
+        <visual name="tray_5">
+          <pose>-0.3750 0.2000 0.1580 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
+          <material><ambient>0.58 0.60 0.63 1</ambient><diffuse>0.68 0.70 0.73 1</diffuse></material>
+        </visual>
+        <visual name="c5_rim_xa">
+          <pose>-0.3750 0.1370 0.1660 0 0 0</pose>
+          <geometry><box><size>0.132 0.006 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c5_rim_xb">
+          <pose>-0.3750 0.2630 0.1660 0 0 0</pose>
+          <geometry><box><size>0.132 0.006 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c5_rim_ya">
+          <pose>-0.4380 0.2000 0.1660 0 0 0</pose>
+          <geometry><box><size>0.006 0.132 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c5_rim_yb">
+          <pose>-0.3120 0.2000 0.1660 0 0 0</pose>
+          <geometry><box><size>0.006 0.132 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <collision name="tray_6_col">
+          <pose>-0.1250 0.2000 0.1580 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
+        </collision>
+        <visual name="tray_6">
+          <pose>-0.1250 0.2000 0.1580 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
+          <material><ambient>0.58 0.60 0.63 1</ambient><diffuse>0.68 0.70 0.73 1</diffuse></material>
+        </visual>
+        <visual name="c6_rim_xa">
+          <pose>-0.1250 0.1370 0.1660 0 0 0</pose>
+          <geometry><box><size>0.132 0.006 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c6_rim_xb">
+          <pose>-0.1250 0.2630 0.1660 0 0 0</pose>
+          <geometry><box><size>0.132 0.006 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c6_rim_ya">
+          <pose>-0.1880 0.2000 0.1660 0 0 0</pose>
+          <geometry><box><size>0.006 0.132 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c6_rim_yb">
+          <pose>-0.0620 0.2000 0.1660 0 0 0</pose>
+          <geometry><box><size>0.006 0.132 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <collision name="tray_7_col">
+          <pose>0.1250 0.2000 0.1580 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
+        </collision>
+        <visual name="tray_7">
+          <pose>0.1250 0.2000 0.1580 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
+          <material><ambient>0.58 0.60 0.63 1</ambient><diffuse>0.68 0.70 0.73 1</diffuse></material>
+        </visual>
+        <visual name="c7_rim_xa">
+          <pose>0.1250 0.1370 0.1660 0 0 0</pose>
+          <geometry><box><size>0.132 0.006 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c7_rim_xb">
+          <pose>0.1250 0.2630 0.1660 0 0 0</pose>
+          <geometry><box><size>0.132 0.006 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c7_rim_ya">
+          <pose>0.0620 0.2000 0.1660 0 0 0</pose>
+          <geometry><box><size>0.006 0.132 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c7_rim_yb">
+          <pose>0.1880 0.2000 0.1660 0 0 0</pose>
+          <geometry><box><size>0.006 0.132 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <collision name="tray_8_col">
+          <pose>0.3750 0.2000 0.1580 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
+        </collision>
+        <visual name="tray_8">
+          <pose>0.3750 0.2000 0.1580 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
+          <material><ambient>0.58 0.60 0.63 1</ambient><diffuse>0.68 0.70 0.73 1</diffuse></material>
+        </visual>
+        <visual name="c8_rim_xa">
+          <pose>0.3750 0.1370 0.1660 0 0 0</pose>
+          <geometry><box><size>0.132 0.006 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c8_rim_xb">
+          <pose>0.3750 0.2630 0.1660 0 0 0</pose>
+          <geometry><box><size>0.132 0.006 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c8_rim_ya">
+          <pose>0.3120 0.2000 0.1660 0 0 0</pose>
+          <geometry><box><size>0.006 0.132 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c8_rim_yb">
+          <pose>0.4380 0.2000 0.1660 0 0 0</pose>
+          <geometry><box><size>0.006 0.132 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <!-- 第 3 层（z=0.22, y=0.09） -->
+        <visual name="beam_3">
+          <pose>0 0.0150 0.2080 0 0 0</pose>
+          <geometry><box><size>1.1 0.03 0.02</size></box></geometry>
+          <material><ambient>0.55 0.68 0.35 1</ambient><diffuse>0.62 0.76 0.42 1</diffuse></material>
+        </visual>
+        <collision name="tray_9_col">
+          <pose>-0.3750 0.0900 0.2180 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
+        </collision>
+        <visual name="tray_9">
+          <pose>-0.3750 0.0900 0.2180 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
+          <material><ambient>0.58 0.60 0.63 1</ambient><diffuse>0.68 0.70 0.73 1</diffuse></material>
+        </visual>
+        <visual name="c9_rim_xa">
+          <pose>-0.3750 0.0270 0.2260 0 0 0</pose>
+          <geometry><box><size>0.132 0.006 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c9_rim_xb">
+          <pose>-0.3750 0.1530 0.2260 0 0 0</pose>
+          <geometry><box><size>0.132 0.006 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c9_rim_ya">
+          <pose>-0.4380 0.0900 0.2260 0 0 0</pose>
+          <geometry><box><size>0.006 0.132 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c9_rim_yb">
+          <pose>-0.3120 0.0900 0.2260 0 0 0</pose>
+          <geometry><box><size>0.006 0.132 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <collision name="tray_10_col">
+          <pose>-0.1250 0.0900 0.2180 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
+        </collision>
+        <visual name="tray_10">
+          <pose>-0.1250 0.0900 0.2180 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
+          <material><ambient>0.58 0.60 0.63 1</ambient><diffuse>0.68 0.70 0.73 1</diffuse></material>
+        </visual>
+        <visual name="c10_rim_xa">
+          <pose>-0.1250 0.0270 0.2260 0 0 0</pose>
+          <geometry><box><size>0.132 0.006 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c10_rim_xb">
+          <pose>-0.1250 0.1530 0.2260 0 0 0</pose>
+          <geometry><box><size>0.132 0.006 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c10_rim_ya">
+          <pose>-0.1880 0.0900 0.2260 0 0 0</pose>
+          <geometry><box><size>0.006 0.132 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c10_rim_yb">
+          <pose>-0.0620 0.0900 0.2260 0 0 0</pose>
+          <geometry><box><size>0.006 0.132 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <collision name="tray_11_col">
+          <pose>0.1250 0.0900 0.2180 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
+        </collision>
+        <visual name="tray_11">
+          <pose>0.1250 0.0900 0.2180 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
+          <material><ambient>0.58 0.60 0.63 1</ambient><diffuse>0.68 0.70 0.73 1</diffuse></material>
+        </visual>
+        <visual name="c11_rim_xa">
+          <pose>0.1250 0.0270 0.2260 0 0 0</pose>
+          <geometry><box><size>0.132 0.006 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c11_rim_xb">
+          <pose>0.1250 0.1530 0.2260 0 0 0</pose>
+          <geometry><box><size>0.132 0.006 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c11_rim_ya">
+          <pose>0.0620 0.0900 0.2260 0 0 0</pose>
+          <geometry><box><size>0.006 0.132 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c11_rim_yb">
+          <pose>0.1880 0.0900 0.2260 0 0 0</pose>
+          <geometry><box><size>0.006 0.132 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <collision name="tray_12_col">
+          <pose>0.3750 0.0900 0.2180 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
+        </collision>
+        <visual name="tray_12">
+          <pose>0.3750 0.0900 0.2180 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
+          <material><ambient>0.58 0.60 0.63 1</ambient><diffuse>0.68 0.70 0.73 1</diffuse></material>
+        </visual>
+        <visual name="c12_rim_xa">
+          <pose>0.3750 0.0270 0.2260 0 0 0</pose>
+          <geometry><box><size>0.132 0.006 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c12_rim_xb">
+          <pose>0.3750 0.1530 0.2260 0 0 0</pose>
+          <geometry><box><size>0.132 0.006 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c12_rim_ya">
+          <pose>0.3120 0.0900 0.2260 0 0 0</pose>
+          <geometry><box><size>0.006 0.132 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
+        <visual name="c12_rim_yb">
+          <pose>0.4380 0.0900 0.2260 0 0 0</pose>
+          <geometry><box><size>0.006 0.132 0.012</size></box></geometry>
+          <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
+        </visual>
         <visual name="leg_-1_-1">
-          <pose>-0.4600 -0.2101 0.0400 0 0 0</pose>
-          <geometry><box><size>0.04 0.04 0.08</size></box></geometry>
+          <pose>-0.5200 0.1450 0.1600 0 0 0</pose>
+          <geometry><box><size>0.03 0.03 0.28</size></box></geometry>
           <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.36 0.37 0.39 1</diffuse></material>
         </visual>
         <visual name="leg_-1_1">
-          <pose>-0.4600 0.2101 0.0400 0 0 0</pose>
-          <geometry><box><size>0.04 0.04 0.08</size></box></geometry>
+          <pose>-0.5200 0.4750 0.1600 0 0 0</pose>
+          <geometry><box><size>0.03 0.03 0.28</size></box></geometry>
           <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.36 0.37 0.39 1</diffuse></material>
         </visual>
         <visual name="leg_1_-1">
-          <pose>0.4600 -0.2101 0.0400 0 0 0</pose>
-          <geometry><box><size>0.04 0.04 0.08</size></box></geometry>
+          <pose>0.5200 0.1450 0.1600 0 0 0</pose>
+          <geometry><box><size>0.03 0.03 0.28</size></box></geometry>
           <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.36 0.37 0.39 1</diffuse></material>
         </visual>
         <visual name="leg_1_1">
-          <pose>0.4600 0.2101 0.0400 0 0 0</pose>
-          <geometry><box><size>0.04 0.04 0.08</size></box></geometry>
+          <pose>0.5200 0.4750 0.1600 0 0 0</pose>
+          <geometry><box><size>0.03 0.03 0.28</size></box></geometry>
           <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.36 0.37 0.39 1</diffuse></material>
         </visual>
       </link>
     </model>
 
-    <!-- 分类码放条（899 x 139 mm，上表面 z=0.1） -->
-    <model name="place_table">
+    <!-- 置物台（取料源，台面 z=0.10） -->
+    <model name="staging_table">
       <static>true</static>
-      <link name="deck">
-        <visual name="deck">
-          <pose>0 0.3000 0.0900 0 0 0</pose>
-          <geometry><box><size>0.8999999999999999 0.13999999999999999 0.02</size></box></geometry>
-          <material>
-            <ambient>0.55 0.56 0.58 1</ambient>
-            <diffuse>0.62 0.63 0.65 1</diffuse>
-            <specular>0.0 0.0 0.0 1</specular>
-          </material>
+      <link name="table">
+        <visual name="top">
+          <pose>0.3000 -0.1500 0.0950 0 0 0</pose>
+          <geometry><box><size>0.16 0.16 0.01</size></box></geometry>
+          <material><ambient>0.10 0.11 0.13 1</ambient><diffuse>0.14 0.15 0.17 1</diffuse></material>
         </visual>
-        <collision name="deck_col">
-          <pose>0 0.3000 0.0900 0 0 0</pose>
-          <geometry><box><size>0.8999999999999999 0.13999999999999999 0.02</size></box></geometry>
+        <collision name="top_col">
+          <pose>0.3000 -0.1500 0.0950 0 0 0</pose>
+          <geometry><box><size>0.16 0.16 0.01</size></box></geometry>
         </collision>
-        <visual name="zone_1">
-          <pose>-0.3600 0.3000 0.1010 0 0 0</pose>
-          <geometry><box><size>0.12 0.12 0.002</size></box></geometry>
-          <material><ambient>0.28 0.30 0.33 1</ambient><diffuse>0.34 0.36 0.39 1</diffuse></material>
+        <visual name="pedestal">
+          <pose>0.3000 -0.1500 0.0480 0 0 0</pose>
+          <geometry><box><size>0.10 0.10 0.08</size></box></geometry>
+          <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.36 0.37 0.39 1</diffuse></material>
         </visual>
-        <visual name="z1_rim_xa">
-          <pose>-0.3600 0.2400 0.1060 0 0 0</pose>
-          <geometry><box><size>0.12 0.006 0.012</size></box></geometry>
-          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
+      </link>
+    </model>
+
+    <!-- 供料管（12 块物料待命位，管底 z=0.085） -->
+    <model name="magazine">
+      <static>true</static>
+      <link name="tube">
+        <visual name="pedestal">
+          <pose>-0.4200 -0.1500 0.0525 0 0 0</pose>
+          <geometry><box><size>0.12 0.12 0.065</size></box></geometry>
+          <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.36 0.37 0.39 1</diffuse></material>
         </visual>
-        <visual name="z1_rim_xb">
-          <pose>-0.3600 0.3600 0.1060 0 0 0</pose>
-          <geometry><box><size>0.12 0.006 0.012</size></box></geometry>
-          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
+        <collision name="floor_col">
+          <pose>-0.4200 -0.1500 0.0800 0 0 0</pose>
+          <geometry><box><size>0.11 0.11 0.01</size></box></geometry>
+        </collision>
+        <visual name="floor">
+          <pose>-0.4200 -0.1500 0.0800 0 0 0</pose>
+          <geometry><box><size>0.11 0.11 0.01</size></box></geometry>
+          <material><ambient>0.40 0.42 0.44 1</ambient><diffuse>0.48 0.50 0.52 1</diffuse></material>
         </visual>
-        <visual name="z1_rim_ya">
-          <pose>-0.4200 0.3000 0.1060 0 0 0</pose>
-          <geometry><box><size>0.006 0.12 0.012</size></box></geometry>
-          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
+        <visual name="wall_n">
+          <pose>-0.4200 -0.1000 0.1300 0 0 0</pose>
+          <geometry><box><size>0.11199999999999999 0.012 0.09</size></box></geometry>
+          <material><ambient>0.45 0.47 0.50 1</ambient><diffuse>0.55 0.57 0.60 1</diffuse></material>
         </visual>
-        <visual name="z1_rim_yb">
-          <pose>-0.3000 0.3000 0.1060 0 0 0</pose>
-          <geometry><box><size>0.006 0.12 0.012</size></box></geometry>
-          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
+        <visual name="wall_s">
+          <pose>-0.4200 -0.2000 0.1300 0 0 0</pose>
+          <geometry><box><size>0.11199999999999999 0.012 0.09</size></box></geometry>
+          <material><ambient>0.45 0.47 0.50 1</ambient><diffuse>0.55 0.57 0.60 1</diffuse></material>
         </visual>
-        <visual name="zone_2">
-          <pose>-0.1200 0.3000 0.1010 0 0 0</pose>
-          <geometry><box><size>0.12 0.12 0.002</size></box></geometry>
-          <material><ambient>0.28 0.30 0.33 1</ambient><diffuse>0.34 0.36 0.39 1</diffuse></material>
+        <visual name="wall_e">
+          <pose>-0.3700 -0.1500 0.1300 0 0 0</pose>
+          <geometry><box><size>0.012 0.11199999999999999 0.09</size></box></geometry>
+          <material><ambient>0.45 0.47 0.50 1</ambient><diffuse>0.55 0.57 0.60 1</diffuse></material>
         </visual>
-        <visual name="z2_rim_xa">
-          <pose>-0.1200 0.2400 0.1060 0 0 0</pose>
-          <geometry><box><size>0.12 0.006 0.012</size></box></geometry>
-          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
+        <visual name="wall_w">
+          <pose>-0.4700 -0.1500 0.1300 0 0 0</pose>
+          <geometry><box><size>0.012 0.11199999999999999 0.09</size></box></geometry>
+          <material><ambient>0.45 0.47 0.50 1</ambient><diffuse>0.55 0.57 0.60 1</diffuse></material>
         </visual>
-        <visual name="z2_rim_xb">
-          <pose>-0.1200 0.3600 0.1060 0 0 0</pose>
-          <geometry><box><size>0.12 0.006 0.012</size></box></geometry>
-          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
+      </link>
+    </model>
+
+    <!-- 回收位标记（识别失败物料的去处） -->
+    <model name="recycle_marker">
+      <static>true</static>
+      <link name="mark">
+        <visual name="ring">
+          <pose>-0.1000 -0.1500 0.0210 0 0 0</pose>
+          <geometry><cylinder><radius>0.055</radius><length>0.002</length></cylinder></geometry>
+          <material><ambient>0.55 0.35 0.10 1</ambient><diffuse>0.65 0.42 0.12 1</diffuse></material>
         </visual>
-        <visual name="z2_rim_ya">
-          <pose>-0.1800 0.3000 0.1060 0 0 0</pose>
-          <geometry><box><size>0.006 0.12 0.012</size></box></geometry>
-          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
+      </link>
+    </model>
+
+    <!-- 末端相机（固定式，置物台正上方朝下；话题 /camera/image 不变） -->
+    <model name="ee_cam">
+      <static>true</static>
+      <pose>0.3000 -0.1500 0.3660 0.0000 1.5708 -1.5708</pose>
+      <link name="body">
+        <visual name="body">
+          <pose>0 0 0.035 0 0 0</pose>
+          <geometry><box><size>0.06 0.06 0.04</size></box></geometry>
+          <material><ambient>0.15 0.15 0.17 1</ambient><diffuse>0.20 0.20 0.22 1</diffuse></material>
         </visual>
-        <visual name="z2_rim_yb">
-          <pose>-0.0600 0.3000 0.1060 0 0 0</pose>
-          <geometry><box><size>0.006 0.12 0.012</size></box></geometry>
-          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
-        </visual>
-        <visual name="zone_3">
-          <pose>0.1200 0.3000 0.1010 0 0 0</pose>
-          <geometry><box><size>0.12 0.12 0.002</size></box></geometry>
-          <material><ambient>0.28 0.30 0.33 1</ambient><diffuse>0.34 0.36 0.39 1</diffuse></material>
-        </visual>
-        <visual name="z3_rim_xa">
-          <pose>0.1200 0.2400 0.1060 0 0 0</pose>
-          <geometry><box><size>0.12 0.006 0.012</size></box></geometry>
-          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
-        </visual>
-        <visual name="z3_rim_xb">
-          <pose>0.1200 0.3600 0.1060 0 0 0</pose>
-          <geometry><box><size>0.12 0.006 0.012</size></box></geometry>
-          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
-        </visual>
-        <visual name="z3_rim_ya">
-          <pose>0.0600 0.3000 0.1060 0 0 0</pose>
-          <geometry><box><size>0.006 0.12 0.012</size></box></geometry>
-          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
-        </visual>
-        <visual name="z3_rim_yb">
-          <pose>0.1800 0.3000 0.1060 0 0 0</pose>
-          <geometry><box><size>0.006 0.12 0.012</size></box></geometry>
-          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
-        </visual>
-        <visual name="zone_4">
-          <pose>0.3600 0.3000 0.1010 0 0 0</pose>
-          <geometry><box><size>0.12 0.12 0.002</size></box></geometry>
-          <material><ambient>0.28 0.30 0.33 1</ambient><diffuse>0.34 0.36 0.39 1</diffuse></material>
-        </visual>
-        <visual name="z4_rim_xa">
-          <pose>0.3600 0.2400 0.1060 0 0 0</pose>
-          <geometry><box><size>0.12 0.006 0.012</size></box></geometry>
-          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
-        </visual>
-        <visual name="z4_rim_xb">
-          <pose>0.3600 0.3600 0.1060 0 0 0</pose>
-          <geometry><box><size>0.12 0.006 0.012</size></box></geometry>
-          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
-        </visual>
-        <visual name="z4_rim_ya">
-          <pose>0.3000 0.3000 0.1060 0 0 0</pose>
-          <geometry><box><size>0.006 0.12 0.012</size></box></geometry>
-          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
-        </visual>
-        <visual name="z4_rim_yb">
-          <pose>0.4200 0.3000 0.1060 0 0 0</pose>
-          <geometry><box><size>0.006 0.12 0.012</size></box></geometry>
-          <material><ambient>0.20 0.22 0.24 1</ambient><diffuse>0.26 0.28 0.30 1</diffuse></material>
-        </visual>
+        <sensor name="camera" type="camera">
+          <pose>0 0 0 0 0 0</pose>
+          <always_on>1</always_on>
+          <visualize>false</visualize>
+          <update_rate>20.0</update_rate>
+          <topic>/camera/image</topic>
+          <camera>
+            <horizontal_fov>1.047</horizontal_fov>
+            <image><width>640</width><height>480</height><format>R8G8B8</format></image>
+            <clip><near>0.005</near><far>4.0</far></clip>
+          </camera>
+        </sensor>
       </link>
     </model>
 
@@ -356,10 +633,10 @@
         </sensor>
       </link>
     </model>
-    <!-- ===== 12 块圆形铁片（动态；类型见 sim_layout.yaml materials.types）===== -->
-    <model name="material_01_scratch">
+    <!-- ===== 12 块圆形物料（开机叠在供料管里，运行时逐块上料；类型 = materials.types[序号-1]）===== -->
+    <model name="material_01">
       <static>false</static>
-      <pose>-0.3750 -0.1667 0.1032 0 0 0</pose>
+      <pose>-0.4200 -0.1500 0.1615 0 0 0</pose>
       <link name="disc">
         <inertial>
           <mass>0.05</mass>
@@ -388,9 +665,9 @@
       </link>
     </model>
 
-    <model name="material_02_chip">
+    <model name="material_02">
       <static>false</static>
-      <pose>-0.1250 -0.1667 0.1032 0 0 0</pose>
+      <pose>-0.4200 -0.1500 0.1550 0 0 0</pose>
       <link name="disc">
         <inertial>
           <mass>0.05</mass>
@@ -419,9 +696,9 @@
       </link>
     </model>
 
-    <model name="material_03_stain">
+    <model name="material_03">
       <static>false</static>
-      <pose>0.1250 -0.1667 0.1032 0 0 0</pose>
+      <pose>-0.4200 -0.1500 0.1485 0 0 0</pose>
       <link name="disc">
         <inertial>
           <mass>0.05</mass>
@@ -450,9 +727,9 @@
       </link>
     </model>
 
-    <model name="material_04_hole">
+    <model name="material_04">
       <static>false</static>
-      <pose>0.3750 -0.1667 0.1032 0 0 0</pose>
+      <pose>-0.4200 -0.1500 0.1420 0 0 0</pose>
       <link name="disc">
         <inertial>
           <mass>0.05</mass>
@@ -481,9 +758,9 @@
       </link>
     </model>
 
-    <model name="material_05_stain">
+    <model name="material_05">
       <static>false</static>
-      <pose>-0.3750 0.0000 0.1032 0 0 0</pose>
+      <pose>-0.4200 -0.1500 0.1355 0 0 0</pose>
       <link name="disc">
         <inertial>
           <mass>0.05</mass>
@@ -512,9 +789,9 @@
       </link>
     </model>
 
-    <model name="material_06_scratch">
+    <model name="material_06">
       <static>false</static>
-      <pose>-0.1250 0.0000 0.1032 0 0 0</pose>
+      <pose>-0.4200 -0.1500 0.1290 0 0 0</pose>
       <link name="disc">
         <inertial>
           <mass>0.05</mass>
@@ -543,9 +820,9 @@
       </link>
     </model>
 
-    <model name="material_07_hole">
+    <model name="material_07">
       <static>false</static>
-      <pose>0.1250 0.0000 0.1032 0 0 0</pose>
+      <pose>-0.4200 -0.1500 0.1225 0 0 0</pose>
       <link name="disc">
         <inertial>
           <mass>0.05</mass>
@@ -574,9 +851,9 @@
       </link>
     </model>
 
-    <model name="material_08_chip">
+    <model name="material_08">
       <static>false</static>
-      <pose>0.3750 0.0000 0.1032 0 0 0</pose>
+      <pose>-0.4200 -0.1500 0.1160 0 0 0</pose>
       <link name="disc">
         <inertial>
           <mass>0.05</mass>
@@ -605,9 +882,9 @@
       </link>
     </model>
 
-    <model name="material_09_chip">
+    <model name="material_09">
       <static>false</static>
-      <pose>-0.3750 0.1667 0.1032 0 0 0</pose>
+      <pose>-0.4200 -0.1500 0.1095 0 0 0</pose>
       <link name="disc">
         <inertial>
           <mass>0.05</mass>
@@ -636,9 +913,9 @@
       </link>
     </model>
 
-    <model name="material_10_scratch">
+    <model name="material_10">
       <static>false</static>
-      <pose>-0.1250 0.1667 0.1032 0 0 0</pose>
+      <pose>-0.4200 -0.1500 0.1030 0 0 0</pose>
       <link name="disc">
         <inertial>
           <mass>0.05</mass>
@@ -667,9 +944,9 @@
       </link>
     </model>
 
-    <model name="material_11_stain">
+    <model name="material_11">
       <static>false</static>
-      <pose>0.1250 0.1667 0.1032 0 0 0</pose>
+      <pose>-0.4200 -0.1500 0.0965 0 0 0</pose>
       <link name="disc">
         <inertial>
           <mass>0.05</mass>
@@ -698,9 +975,9 @@
       </link>
     </model>
 
-    <model name="material_12_hole">
+    <model name="material_12">
       <static>false</static>
-      <pose>0.3750 0.1667 0.1032 0 0 0</pose>
+      <pose>-0.4200 -0.1500 0.0900 0 0 0</pose>
       <link name="disc">
         <inertial>
           <mass>0.05</mass>
@@ -729,7 +1006,7 @@
       </link>
     </model>
 
-  <!-- 三轴龙门（关节零位 = 相机在货架中心正上方、末端最高位） -->
+  <!-- 三轴龙门（关节零位 = 吸盘最高位 0.239 / 相机 0.365） -->
   <model name="aic_gantry">
       <static>false</static>
       <pose>0 0 0 0 0 0</pose>
@@ -744,25 +1021,25 @@
           </inertia>
         </inertial>
 
-        <!-- 四根立柱 -->
+        <!-- 四根立柱（M3：站在整机底板上表面 0.02 上） -->
         <visual name="post_fl">
-          <pose>0.50 -0.30 0.30 0 0 0</pose>
+          <pose>0.50 -0.30 0.32 0 0 0</pose>
           <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
           <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.34 0.35 0.37 1</diffuse>
             <specular>0.1 0.1 0.1 1</specular></material>
         </visual>
         <visual name="post_fr">
-          <pose>0.50 0.30 0.30 0 0 0</pose>
+          <pose>0.50 0.30 0.32 0 0 0</pose>
           <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
           <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.34 0.35 0.37 1</diffuse></material>
         </visual>
         <visual name="post_bl">
-          <pose>-0.50 -0.30 0.30 0 0 0</pose>
+          <pose>-0.50 -0.30 0.32 0 0 0</pose>
           <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
           <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.34 0.35 0.37 1</diffuse></material>
         </visual>
         <visual name="post_br">
-          <pose>-0.50 0.30 0.30 0 0 0</pose>
+          <pose>-0.50 0.30 0.32 0 0 0</pose>
           <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
           <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.34 0.35 0.37 1</diffuse></material>
         </visual>
@@ -781,19 +1058,19 @@
         </visual>
 
         <collision name="post_fl_col">
-          <pose>0.50 -0.30 0.30 0 0 0</pose>
+          <pose>0.50 -0.30 0.32 0 0 0</pose>
           <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
         </collision>
         <collision name="post_fr_col">
-          <pose>0.50 0.30 0.30 0 0 0</pose>
+          <pose>0.50 0.30 0.32 0 0 0</pose>
           <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
         </collision>
         <collision name="post_bl_col">
-          <pose>-0.50 -0.30 0.30 0 0 0</pose>
+          <pose>-0.50 -0.30 0.32 0 0 0</pose>
           <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
         </collision>
         <collision name="post_br_col">
-          <pose>-0.50 0.30 0.30 0 0 0</pose>
+          <pose>-0.50 0.30 0.32 0 0 0</pose>
           <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
         </collision>
       </link>
@@ -869,50 +1146,34 @@
             <specular>0.6 0.6 0.6 1</specular></material>
         </visual>
 
-        <!-- 工具法兰：两根横条（中间留出相机光路） -->
+        <!-- 工具支架：两根横条（M3 纯装饰、无碰撞体 —— 相机已改为固定在置物台
+             正上方（gen_world.py 生成 ee_cam），吸盘不进光路，无需留中空） -->
         <visual name="flange_bar_a">
-          <pose>-0.010 -0.055 -0.41 0 0 0</pose>
-          <geometry><box><size>0.18 0.02 0.02</size></box></geometry>
+          <pose>-0.010 -0.035 -0.275 0 0 0</pose>
+          <geometry><box><size>0.10 0.02 0.015</size></box></geometry>
           <material><ambient>0.35 0.36 0.38 1</ambient><diffuse>0.40 0.41 0.43 1</diffuse></material>
         </visual>
         <visual name="flange_bar_b">
-          <pose>-0.010 0.055 -0.41 0 0 0</pose>
-          <geometry><box><size>0.18 0.02 0.02</size></box></geometry>
+          <pose>-0.010 0.035 -0.275 0 0 0</pose>
+          <geometry><box><size>0.10 0.02 0.015</size></box></geometry>
           <material><ambient>0.35 0.36 0.38 1</ambient><diffuse>0.40 0.41 0.43 1</diffuse></material>
         </visual>
 
-        <!-- 夹指（沿 X 开合；z_joint=0 时底面 z=0.115 m） -->
-        <visual name="finger_l">
-          <pose>-0.036 0 -0.395 0 0 0</pose>
-          <geometry><box><size>0.012 0.05 0.03</size></box></geometry>
-          <material><ambient>0.85 0.55 0.10 1</ambient><diffuse>0.92 0.62 0.12 1</diffuse></material>
+        <!-- 真空吸盘：波纹管 + 吸口（z_joint=0 时吸口下沿世界 z=0.239，
+             即 sim_layout.yaml gantry.pad_z0；改这里必须同步改那个值） -->
+        <visual name="suction_bellows">
+          <pose>-0.010 0 -0.294 0 0 0</pose>
+          <geometry><cylinder><radius>0.018</radius><length>0.022</length></cylinder></geometry>
+          <material><ambient>0.20 0.20 0.22 1</ambient><diffuse>0.26 0.26 0.28 1</diffuse></material>
         </visual>
-        <visual name="finger_r">
-          <pose>0.036 0 -0.395 0 0 0</pose>
-          <geometry><box><size>0.012 0.05 0.03</size></box></geometry>
+        <visual name="suction_pad">
+          <pose>-0.010 0 -0.303 0 0 0</pose>
+          <geometry><cylinder><radius>0.020</radius><length>0.006</length></cylinder></geometry>
           <material><ambient>0.85 0.55 0.10 1</ambient><diffuse>0.92 0.62 0.12 1</diffuse></material>
         </visual>
 
-        <!-- 相机：朝下（rpy pitch=+90° 把相机 +X 光轴转成世界 -Z） -->
-        <sensor name="camera" type="camera">
-          <pose>0 0 -0.18 0 1.5708 -1.5708</pose>
-          <always_on>1</always_on>
-          <visualize>false</visualize>
-          <update_rate>20</update_rate>
-          <topic>/camera/image</topic>
-          <camera>
-            <horizontal_fov>1.047</horizontal_fov>
-            <image>
-              <width>640</width>
-              <height>480</height>
-              <format>R8G8B8</format>
-            </image>
-            <clip>
-              <near>0.005</near>
-              <far>4.0</far>
-            </clip>
-          </camera>
-        </sensor>
+        <!-- M3：相机已移出龙门（固定在置物台正上方，gen_world.py 生成 ee_cam 模型，
+             话题仍是 /camera/image），末端只剩吸盘 -->
       </link>
 
       <!-- ============================== 关节 ============================== -->
@@ -954,8 +1215,12 @@
         <axis>
           <xyz>0 0 1</xyz>
           <limit>
-            <lower>-0.42</lower>
-            <upper>0.0</upper>
+            <!-- M3：吸盘基准 0.239，最低需求 = 置物台盘顶 0.106 → z=-0.133；
+                 收紧到 -0.20 留余量（M2 的 -0.42 是给旧夹爪几何的） -->
+            <!-- M3：上限 +0.03 —— 携料平移时盘底（pad_z0+travel_z-盘厚 = 0.253）
+                 必须跨过第 3 层围边顶（0.232）；下限 -0.20 覆盖最低取放位 -->
+            <lower>-0.20</lower>
+            <upper>0.03</upper>
             <effort>200</effort>
             <velocity>0.15</velocity>
           </limit>
@@ -1020,7 +1285,7 @@
         <plugin filename="ignition-gazebo-detachable-joint-system"
               name="ignition::gazebo::systems::DetachableJoint">
         <parent_link>z_carriage</parent_link>
-        <child_model>material_01_scratch</child_model>
+        <child_model>material_01</child_model>
         <child_link>disc</child_link>
         <attach_topic>/sim/attach_01</attach_topic>
         <detach_topic>/sim/detach_01</detach_topic>
@@ -1028,7 +1293,7 @@
       <plugin filename="ignition-gazebo-detachable-joint-system"
               name="ignition::gazebo::systems::DetachableJoint">
         <parent_link>z_carriage</parent_link>
-        <child_model>material_02_chip</child_model>
+        <child_model>material_02</child_model>
         <child_link>disc</child_link>
         <attach_topic>/sim/attach_02</attach_topic>
         <detach_topic>/sim/detach_02</detach_topic>
@@ -1036,7 +1301,7 @@
       <plugin filename="ignition-gazebo-detachable-joint-system"
               name="ignition::gazebo::systems::DetachableJoint">
         <parent_link>z_carriage</parent_link>
-        <child_model>material_03_stain</child_model>
+        <child_model>material_03</child_model>
         <child_link>disc</child_link>
         <attach_topic>/sim/attach_03</attach_topic>
         <detach_topic>/sim/detach_03</detach_topic>
@@ -1044,7 +1309,7 @@
       <plugin filename="ignition-gazebo-detachable-joint-system"
               name="ignition::gazebo::systems::DetachableJoint">
         <parent_link>z_carriage</parent_link>
-        <child_model>material_04_hole</child_model>
+        <child_model>material_04</child_model>
         <child_link>disc</child_link>
         <attach_topic>/sim/attach_04</attach_topic>
         <detach_topic>/sim/detach_04</detach_topic>
@@ -1052,7 +1317,7 @@
       <plugin filename="ignition-gazebo-detachable-joint-system"
               name="ignition::gazebo::systems::DetachableJoint">
         <parent_link>z_carriage</parent_link>
-        <child_model>material_05_stain</child_model>
+        <child_model>material_05</child_model>
         <child_link>disc</child_link>
         <attach_topic>/sim/attach_05</attach_topic>
         <detach_topic>/sim/detach_05</detach_topic>
@@ -1060,7 +1325,7 @@
       <plugin filename="ignition-gazebo-detachable-joint-system"
               name="ignition::gazebo::systems::DetachableJoint">
         <parent_link>z_carriage</parent_link>
-        <child_model>material_06_scratch</child_model>
+        <child_model>material_06</child_model>
         <child_link>disc</child_link>
         <attach_topic>/sim/attach_06</attach_topic>
         <detach_topic>/sim/detach_06</detach_topic>
@@ -1068,7 +1333,7 @@
       <plugin filename="ignition-gazebo-detachable-joint-system"
               name="ignition::gazebo::systems::DetachableJoint">
         <parent_link>z_carriage</parent_link>
-        <child_model>material_07_hole</child_model>
+        <child_model>material_07</child_model>
         <child_link>disc</child_link>
         <attach_topic>/sim/attach_07</attach_topic>
         <detach_topic>/sim/detach_07</detach_topic>
@@ -1076,7 +1341,7 @@
       <plugin filename="ignition-gazebo-detachable-joint-system"
               name="ignition::gazebo::systems::DetachableJoint">
         <parent_link>z_carriage</parent_link>
-        <child_model>material_08_chip</child_model>
+        <child_model>material_08</child_model>
         <child_link>disc</child_link>
         <attach_topic>/sim/attach_08</attach_topic>
         <detach_topic>/sim/detach_08</detach_topic>
@@ -1084,7 +1349,7 @@
       <plugin filename="ignition-gazebo-detachable-joint-system"
               name="ignition::gazebo::systems::DetachableJoint">
         <parent_link>z_carriage</parent_link>
-        <child_model>material_09_chip</child_model>
+        <child_model>material_09</child_model>
         <child_link>disc</child_link>
         <attach_topic>/sim/attach_09</attach_topic>
         <detach_topic>/sim/detach_09</detach_topic>
@@ -1092,7 +1357,7 @@
       <plugin filename="ignition-gazebo-detachable-joint-system"
               name="ignition::gazebo::systems::DetachableJoint">
         <parent_link>z_carriage</parent_link>
-        <child_model>material_10_scratch</child_model>
+        <child_model>material_10</child_model>
         <child_link>disc</child_link>
         <attach_topic>/sim/attach_10</attach_topic>
         <detach_topic>/sim/detach_10</detach_topic>
@@ -1100,7 +1365,7 @@
       <plugin filename="ignition-gazebo-detachable-joint-system"
               name="ignition::gazebo::systems::DetachableJoint">
         <parent_link>z_carriage</parent_link>
-        <child_model>material_11_stain</child_model>
+        <child_model>material_11</child_model>
         <child_link>disc</child_link>
         <attach_topic>/sim/attach_11</attach_topic>
         <detach_topic>/sim/detach_11</detach_topic>
@@ -1108,7 +1373,7 @@
       <plugin filename="ignition-gazebo-detachable-joint-system"
               name="ignition::gazebo::systems::DetachableJoint">
         <parent_link>z_carriage</parent_link>
-        <child_model>material_12_hole</child_model>
+        <child_model>material_12</child_model>
         <child_link>disc</child_link>
         <attach_topic>/sim/attach_12</attach_topic>
         <detach_topic>/sim/detach_12</detach_topic>

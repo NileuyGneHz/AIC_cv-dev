@@ -29,7 +29,9 @@ class SimLayout:
         self.rack = doc["rack"]
         self.plate = doc["plate"]
         self.gantry = doc.get("gantry", {})
-        self.place = doc.get("place_zones", {})
+        self.staging = doc.get("staging", {})
+        self.magazine = doc.get("magazine", {})
+        self.recycle = doc.get("recycle", {})
         self.types = [int(t) for t in doc.get("materials", {}).get("types", [])]
 
     @classmethod
@@ -45,43 +47,58 @@ class SimLayout:
     def rows(self):
         return int(self.rack["rows"])
 
-    def slot_xy(self, slot_id):
-        """slot_id 1..N（row-major）-> 世界坐标 (x, y)。row 1 在 -Y 侧。"""
-        slot_id = int(slot_id)
-        if not 1 <= slot_id <= self.cols * self.rows:
-            raise ValueError("slot_id 越界：{}".format(slot_id))
-        row = (slot_id - 1) // self.cols + 1
-        col = (slot_id - 1) % self.cols + 1
-        px = float(self.rack["pitch_x"])
-        py = float(self.rack["pitch_y"])
-        cx = float(self.rack.get("center_x", 0.0))
-        cy = float(self.rack.get("center_y", 0.0))
-        x = cx + (col - (self.cols + 1) / 2.0) * px
-        y = cy + (row - (self.rows + 1) / 2.0) * py
-        return x, y
+    def staging_xy(self):
+        """置物台（取料源）格心 (x, y) 与台面高 z。"""
+        return (float(self.staging["x"]), float(self.staging["y"]),
+                float(self.staging["z"]))
 
-    def slot_type(self, slot_id):
-        """缺陷类型 1..4；未配置时返回 0。"""
-        idx = int(slot_id) - 1
-        if 0 <= idx < len(self.types):
-            return self.types[idx]
+    def magazine_pose(self):
+        """供料管 (x, y, 管底 z)。"""
+        return (float(self.magazine["x"]), float(self.magazine["y"]),
+                float(self.magazine["floor_z"]))
+
+    def recycle_xyz(self):
+        """回收位 (x, y, z)。"""
+        return (float(self.recycle["x"]), float(self.recycle["y"]),
+                float(self.recycle["z"]))
+
+    def rack_cell(self, mtype, level):
+        """类型列 mtype 1..4 的第 level 层（1 起）格心 (x, y) 与托盘面高 z。
+
+        层位沿 +Y 阶梯错开：y = y_front - (level-1)*level_step_y，
+        保证从上方垂放时不会撞到上层的托盘。
+        """
+        col = int(mtype)
+        if not 1 <= col <= self.cols:
+            return None
+        if not 1 <= int(level) <= self.rows:
+            return None
+        x = (col - (self.cols + 1) / 2.0) * float(self.rack["pitch_x"])
+        z = float(self.rack["top_z"]) + (int(level) - 1) * float(
+            self.rack["level_pitch_z"])
+        y = (float(self.rack.get("y_front", self.rack.get("y", 0.30)))
+             - (int(level) - 1) * float(self.rack.get("level_step_y", 0.0)))
+        return x, y, z
+
+    def type_of_material(self, idx):
+        """第 idx 块物料（1 起，生成顺序）的类型真值。"""
+        i = int(idx) - 1
+        if 0 <= i < len(self.types):
+            return self.types[i]
         return 0
 
-    def place_xy(self, mtype):
-        """缺陷类型 1..4 -> 码放格的格心 (x, y)；未配置时返回 None。
+    def slot_type(self, slot_id):
+        """slot_id（=物料编号，1 起）的缺陷类型真值 1..4；越界返回 0。"""
+        return self.type_of_material(slot_id)
 
-        码放条在 +Y 侧，4 格沿 +X 排列，顺序与类型号一致（见 place_zones.xs）。
-        """
-        xs = self.place.get("xs") or []
-        idx = int(mtype) - 1
-        if not 0 <= idx < len(xs):
-            return None
-        return float(xs[idx]), float(self.place["y"])
+    def pad_z0(self):
+        """吸盘工具基准：z_joint=0 时吸口下沿的世界高度。"""
+        return float(self.gantry.get("pad_z0", 0.239))
 
     def summary(self):
-        return "frame={} cols={} rows={} pitch=({}, {}) types={}".format(
-            self.frame_id, self.cols, self.rows,
-            self.rack["pitch_x"], self.rack["pitch_y"], self.types)
+        return ("frame={} 货架={}列x{}层 types={} 置物台=({},{})").format(
+            self.frame_id, self.cols, self.rows, self.types,
+            self.staging.get("x"), self.staging.get("y"))
 
 
 def declare_number(node, name, default, cast=float):

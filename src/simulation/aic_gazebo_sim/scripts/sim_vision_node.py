@@ -4,12 +4,9 @@
 契约：docs/guides/decision_vision_interface.md —— 每次 GOTO 后最多一条
       std_msgs/String，取值 "1".."4"；失败场景「不发」即可，不发特殊值。
 
-为什么先做 ground truth 桩
---------------------------
-真视觉（OpenCV / YOLO）还没写。这个桩让决策-控制-仿真三段先跑通闭环，
-并且可以注入 drop_rate / invalid_rate 复现「识别失败 / 脏数据」路径
-（对应决策侧 TIMEOUT 兜底与非法值丢弃计数）。
-等 aic_vision_trad 就绪后，把本节点换掉即可，话题契约不变。
+M3 真值口径：第 k 个 GOTO 上料的是 material_k（按 slot_id 供料，供料管按名
+取料），其类型 = materials.types[slot_id-1] —— 与 M2 相同的「slot -> 类型」
+映射，真值映射不变，只是物料是动态上料的。
 
 触发方式：订阅 /sim/gantry_arrived（std_msgs/UInt8 = slot_id），
 延时 settle_s + delay_s 后发一条；不依赖相机图像，也不看 /vision/trigger。
@@ -52,7 +49,8 @@ class SimVisionNode(Node):
         if slot <= 0:
             return
         if self.drop_rate > 0.0 and self.rng.random() < self.drop_rate:
-            self.get_logger().warn("[sim/vision] slot %d 模拟识别失败（不发结果）" % slot)
+            self.get_logger().warn(
+                "[sim/vision] slot %d 模拟识别失败（不发结果，物料将被回收）" % slot)
             return
 
         delay = self.settle_s + self.delay_s
@@ -76,7 +74,8 @@ class SimVisionNode(Node):
         msg = String()
         msg.data = payload
         self.pub.publish(msg)
-        self.get_logger().info("[sim/vision] slot %d -> '%s'" % (slot, payload))
+        self.get_logger().info("[sim/vision] slot %d（material %02d）-> '%s'"
+                               % (slot, slot, payload))
 
 
 def main():

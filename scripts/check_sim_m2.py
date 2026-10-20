@@ -27,8 +27,10 @@ import sys
 
 import yaml
 
-# 世界模型名后缀 -> 缺陷类型编号（与 defect_classifier.TYPE_NAMES 一致）
-SUFFIX_TYPE = {"scratch": 1, "stain": 2, "chip": 3, "hole": 4}
+# 世界模型名：material_NN（NN = 上料轮次 / slot_id）。类型不写在名字里，
+# 一律回查 materials.types —— 避免两处事实漂移（M3 改动：早前名字带
+# _scratch/_stain 后缀，重命名物料时要同时改控制器，容易漏）。
+MATERIAL_NAME = re.compile(r"^material_(\d+)$")
 
 NAME_BLOCK = re.compile(r'^\s*name:\s*"([^"]+)"', re.M)
 POS_BLOCK = re.compile(
@@ -51,10 +53,10 @@ def parse_pose(path):
     return out
 
 
-def type_of(model_name):
-    """material_01_scratch -> 1；未知后缀返回 None。"""
-    suffix = model_name.rsplit("_", 1)[-1]
-    return SUFFIX_TYPE.get(suffix)
+def slot_of(model_name):
+    """material_07 -> 7；不是物料模型返回 None。"""
+    m = MATERIAL_NAME.match(model_name)
+    return int(m.group(1)) if m else None
 
 
 def read_results(path):
@@ -86,11 +88,19 @@ def main():
     layout = yaml.safe_load(open(args.layout, encoding="utf-8"))
     expect_types = [int(t) for t in layout["materials"]["types"]]
     n_slots = len(expect_types)
-    place = layout.get("place_zones") or {}
-    xs = [float(x) for x in (place.get("xs") or [])]
-    place_y = float(place.get("y", 0.0))
-    deck_z = float(place.get("z", 0.10))
+    # M3：货架 = 放置目标（4 类型列 x 3 层，每格一块，层位沿 +Y 阶梯错开）。
+    # 格心 x 由 pitch_x 推出（与 gen_world/score_node 同一公式）。
+    rack = layout.get("rack") or {}
+    cols = int(rack.get("cols", 4))
+    rack_rows = int(rack.get("rows", 3))
+    pitch_x = float(rack.get("pitch_x", 0.25))
+    xs = [(c - (cols + 1) / 2.0) * pitch_x for c in range(1, cols + 1)]
+    y_front = float(rack.get("y_front", rack.get("y", 0.30)))
+    step_y = float(rack.get("level_step_y", 0.0))
+    top_z = float(rack.get("top_z", 0.10))
+    lpz = float(rack.get("level_pitch_z", 0.06))
     thick = float(layout["plate"]["thickness"])
+    level_zs = [top_z + i * lpz for i in range(rack_rows)]
 
     fails = []
 
@@ -114,9 +124,9 @@ def main():
             fails.append("A3 slot %d 类型 %s != 期望 %d"
                          % (slot, row.get("material_type"), expect))
 
-    # ---- B. 夹持 / 释放成对 ----
-    n_attach = count_log(args.log, "夹持（DetachableJoint attach）")
-    n_detach = count_log(args.log, "释放（DetachableJoint detach）")
+    # ---- B. 吸附 / 释放成对 ----
+    n_attach = count_log(args.log, "吸附（吸盘使能 / DetachableJoint attach）")
+    n_detach = count_log(args.log, "释放（吸盘断气 / DetachableJoint detach）")
     if n_attach != n_slots:
         fails.append("B1 夹持 %d 次 != %d（有料没被抓起，或决策退出太早）"
                      % (n_attach, n_slots))
@@ -124,7 +134,7 @@ def main():
         fails.append("B2 释放 %d 次 != %d（最后一块料可能卡在夹爪里，见坑 19）"
                      % (n_detach, n_slots))
 
-    # ---- C. 物理落位 ----
+    # ---- C. 物理落位（M3：每格一块，落在对应类型列的某一层托盘上） ----
     poses = parse_pose(args.pose)
     warns = []
     if not poses:
@@ -134,33 +144,39 @@ def main():
         warns.append("C 跳过：pose/info 转储为空（可能命中坑 20 的 run loop 卡死），"
                      "落位未核对；重跑一次通常就正常")
     elif len(poses) != n_slots:
-        fails.append("C0 pose/info 里只有 %d 块铁片（应为 %d），转储是否完整？"
+        fails.append("C0 pose/info 里只有 %d 块物料（应为 %d），转储是否完整？"
                      % (len(poses), n_slots))
-    z_lo = deck_z + thick * 0.25          # 至少贴在台面上（掉下去会接近 0.013）
-    z_hi = deck_z + thick * (n_slots + 1)  # 叠满也不会超过这个上限
+    z_lo = min(level_zs) + thick * 0.25   # 至少贴在某层托盘上（掉下去会接近 0）
+    z_hi = max(level_zs) + thick * 1.5
     if poses:
         print("%-22s %8s %8s %8s %8s %8s" % ("model", "x", "y", "z", "dx(mm)", "dy(mm)"))
     for name in sorted(poses):
-        tid = type_of(name)
+        sid = slot_of(name)
         pos = poses[name]
         if pos is None:
             fails.append("C1 %s 解析不出坐标" % name)
             continue
         x, y, z = pos
-        if tid is None or not 0 < tid <= len(xs):
-            fails.append("C2 %s 的类型后缀无法映射到码放格" % name)
+        if sid is None or not 1 <= sid <= len(expect_types):
+            fails.append("C2 %s 的编号不在 1..%d" % (name, len(expect_types)))
             continue
+        # 轮次编号 -> 物料真值类型 -> 应落的类型列
+        tid = expect_types[sid - 1]
+        # 由盘心 z 反推层位（盘心 = 托盘面 + 厚/2），再取该层的阶梯 y
+        level = max(1, min(rack_rows, int(round((z - thick / 2.0 - top_z) / lpz)) + 1))
+        exp_y = y_front - (level - 1) * step_y
         dx = (x - xs[tid - 1]) * 1000.0
-        dy = (y - place_y) * 1000.0
-        print("%-22s %8.4f %8.4f %8.4f %8.1f %8.1f" % (name, x, y, z, dx, dy))
+        dy = (y - exp_y) * 1000.0
+        print("%-22s %8.4f %8.4f %8.4f %8.1f %8.1f  (L%d)"
+              % (name, x, y, z, dx, dy, level))
         if abs(dx) > args.xy_tol * 1000.0:
-            fails.append("C3 %s x 偏格心 %.1f mm（容差 %.0f mm）"
+            fails.append("C3 %s x 偏类型列格心 %.1f mm（容差 %.0f mm）"
                          % (name, dx, args.xy_tol * 1000.0))
         if abs(dy) > args.xy_tol * 1000.0:
-            fails.append("C4 %s y 偏码放条中心 %.1f mm" % (name, dy))
+            fails.append("C4 %s y 偏第 %d 层深度线 %.1f mm" % (name, level, dy))
         if not (z_lo <= z <= z_hi):
-            fails.append("C5 %s z=%.4f 不在台面高度区间 [%.4f, %.4f]"
-                         "（掉到碰撞板/地面？）" % (name, z, z_lo, z_hi))
+            fails.append("C5 %s z=%.4f 不在托盘高度区间 [%.4f, %.4f]"
+                         "（掉到地面/未放入？）" % (name, z, z_lo, z_hi))
 
     print()
     for w in warns:
