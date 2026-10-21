@@ -8,6 +8,7 @@ install(PROGRAMS
   scripts/plc_gateway.py
   scripts/plc_master_demo.py
   scripts/rsc_link.py
+  scripts/rsc_round_test.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
