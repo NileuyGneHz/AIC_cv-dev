@@ -43,6 +43,8 @@ def generate_launch_description():
         DeclareLaunchArgument("vision_debug_dir", default_value=""),
         DeclareLaunchArgument("drop_rate", default_value="0.0"),
         DeclareLaunchArgument("invalid_rate", default_value="0.0"),
+        DeclareLaunchArgument("start_decision", default_value="true",
+                              description="false = 不起 bt_runner（PLC 接管时用）"),
         # 看板自己的参数
         DeclareLaunchArgument("http_port", default_value="8080"),
         DeclareLaunchArgument("layout_yaml", default_value="",
@@ -59,6 +61,7 @@ def generate_launch_description():
                 "vision_debug_dir": LaunchConfiguration("vision_debug_dir"),
                 "drop_rate": LaunchConfiguration("drop_rate"),
                 "invalid_rate": LaunchConfiguration("invalid_rate"),
+                "start_decision": LaunchConfiguration("start_decision"),
             }.items(),
         ),
         score_node,

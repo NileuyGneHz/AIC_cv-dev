@@ -18,6 +18,7 @@ from launch.actions import (DeclareLaunchArgument, IncludeLaunchDescription,
                             RegisterEventHandler, Shutdown, TimerAction)
 from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -32,6 +33,8 @@ def generate_launch_description():
 
     decision_node = Node(package="aic_behavior_tree", executable="bt_runner",
                          name="aic_decision_bt", output="screen",
+                         # PLC 接管时关掉决策层，否则两条指令流会打架（见 aic_plc_gateway）
+                         condition=IfCondition(LaunchConfiguration("start_decision")),
                          parameters=[params_file, {
                              "once": once,
                              "results_csv": results_csv,
@@ -46,6 +49,9 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument("gui", default_value="false"),
+        DeclareLaunchArgument("start_decision", default_value="true",
+                              description="false = 不起决策层 bt_runner（由 PLC 经 "
+                                          "aic_plc_gateway 下发任务时用）"),
         DeclareLaunchArgument("once", default_value="true",
                               description="true = 跑完一轮巡视即退出（自验用）"),
         DeclareLaunchArgument("auto_restart", default_value="false",
