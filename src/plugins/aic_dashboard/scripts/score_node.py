@@ -44,6 +44,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import cv2
 import numpy as np
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from sensor_msgs.msg import Image
@@ -63,8 +64,8 @@ STATUS_LABEL = {
 
 # 自由摄像机预设机位：(x, y, z, roll, pitch, yaw)。俯视图默认机位来自 sim_layout.yaml。
 CAM_PRESETS = {
-    "overhead": (0.00, -0.95, 1.15, 0.0, 0.88, 1.5708),   # 全景俯视（默认）
-    "top":      (0.00,  0.02, 1.50, 0.0, 1.5708, 0.0),    # 正上方垂直向下
+    "overhead": (0.00, 0.02, 1.62, 0.0, 1.5708, 1.5708),   # 全景正俯视（默认）
+    "top":      (0.00, -0.95, 1.15, 0.0, 0.88, 1.5708),   # 斜俯视（看立体关系）
     "place":    (0.00, -0.15, 0.75, 0.0, 0.965, 1.5708),  # 码放区特写
     "rack":     (0.00, -0.70, 0.85, 0.0, 0.82, 1.5708),   # 货架区特写
 }
@@ -100,8 +101,8 @@ class ScoreState:
     """判分 + 态势状态（线程安全：ROS 回调线程写，HTTP 线程读）。
 
     M3 语义：slot_id 既是决策的巡视位点号，也是物料编号（material_slot）。
-    物料流：供料管（magazine）→ 置物台（staged）→ 吸盘（held）→ 货架列位（placed）
-    / 回收位（recycled，识别失败未取走）。
+    物料流：来料架（magazine，3 行 x 4 列）→ 置物台（staged）→ 吸盘（held）
+    → 货架列位（placed）/ 回收位（recycled，识别失败未取走）。
     判分真值：types[slot-1]（与决策 CSV / gt 桩同一份事实）。
     """
 
@@ -118,8 +119,15 @@ class ScoreState:
         self.lpz = float(rack.get("level_pitch_z", 0.06))
         st = doc.get("staging", {})
         self.staging = (float(st.get("x", 0.30)), float(st.get("y", -0.15)))
-        mg = doc.get("magazine", {})
-        self.magazine = (float(mg.get("x", -0.42)), float(mg.get("y", -0.15)))
+        # 来料架（M4）：3 行 x 4 列，12 块物料开局各占一格
+        inf = doc.get("infeed", {})
+        self.infeed_cols = int(inf.get("cols", 4))
+        self.infeed_rows = int(inf.get("rows", 3))
+        self.infeed_px = float(inf.get("pitch_x", 0.25))
+        self.infeed_py = float(inf.get("pitch_y", 0.09))
+        self.infeed_y0 = float(inf.get("y0", -0.44))
+        self.infeed_y1 = self.infeed_y0 + (self.infeed_rows - 1) * self.infeed_py
+        self.magazine = (0.0, (self.infeed_y0 + self.infeed_y1) / 2.0)
         rc = doc.get("recycle", {})
         self.recycle = (float(rc.get("x", -0.10)), float(rc.get("y", -0.15)))
         # 吸盘工具基准（z_joint=0 的吸口下沿高度）与盘厚：用于从 gantry z 反推层位
@@ -141,8 +149,15 @@ class ScoreState:
         self.gantry = {"x": 0.0, "y": 0.0, "z": 0.0, "moving": False}
         self.plates = {}                          # slot -> dict(type,status,x,y)
         for s in range(1, len(types) + 1):
+            ix, iy = self.infeed_slot(s)
             self.plates[s] = {"type": int(types[s - 1]), "status": "magazine",
-                              "x": self.magazine[0], "y": self.magazine[1]}
+                              "x": ix, "y": iy}
+
+    def infeed_slot(self, idx):
+        """来料架第 idx 块（1 起）的格位 (x, y)，row-major（与生成器同一公式）。"""
+        row, col = divmod(int(idx) - 1, self.infeed_cols)
+        x = (col + 1 - (self.infeed_cols + 1) / 2.0) * self.infeed_px
+        return x, self.infeed_y0 + row * self.infeed_py
 
     def col_x(self, mtype):
         """类型列的格心 x（列序即类型号 1..cols）。"""
@@ -322,6 +337,11 @@ class ScoreState:
                         "step_y": self.step_y, "lpz": self.lpz,
                         "staging": list(self.staging),
                         "magazine": list(self.magazine),
+                        "infeed": {
+                            "x0": -(self.infeed_cols - 1) / 2.0 * self.infeed_px - 0.06,
+                            "x1": (self.infeed_cols - 1) / 2.0 * self.infeed_px + 0.06,
+                            "y0": self.infeed_y0 - 0.06,
+                            "y1": self.infeed_y1 + 0.06},
                         "recycle": list(self.recycle)},
             }
 
@@ -452,15 +472,16 @@ function drawMap(d) {
     fill="#132a1e" stroke="#22c55e" rx="4" stroke-dasharray="4 3"/>
     <text x="${X(m.staging[0])}" y="${Y(m.staging[1])+30}" fill="#22c55e" font-size="10"
     text-anchor="middle">置物台</text>`;
-  s += `<rect x="${X(m.magazine[0])-20}" y="${Y(m.magazine[1])-20}" width="40" height="40"
-    fill="#1e293b" stroke="#64748b" rx="4"/>
-    <text x="${X(m.magazine[0])}" y="${Y(m.magazine[1])+30}" fill="#64748b" font-size="10"
-    text-anchor="middle">供料管</text>`;
+  s += `<rect x="${X(m.infeed.x0)}" y="${Y(m.infeed.y0)}"
+    width="${X(m.infeed.x1)-X(m.infeed.x0)}" height="${Y(m.infeed.y1)-Y(m.infeed.y0)}"
+    fill="#111c2e" stroke="#64748b" rx="4" stroke-dasharray="4 3"/>
+    <text x="${X(0)}" y="${Y(m.infeed.y1)+16}" fill="#64748b" font-size="10"
+    text-anchor="middle">来料架 3 x 4</text>`;
   s += `<circle cx="${X(m.recycle[0])}" cy="${Y(m.recycle[1])}" r="14" fill="none"
     stroke="#a16207" stroke-dasharray="3 3"/>
     <text x="${X(m.recycle[0])}" y="${Y(m.recycle[1])+28}" fill="#a16207" font-size="10"
     text-anchor="middle">回收位</text>`;
-  // 物料圆点（待命=供料管处，识别中=置物台，搬运=跟随龙门，已入位=货架列）
+  // 物料圆点（待命=来料架，识别中=置物台，搬运=跟随龙门，已入位=货架列）
   for (const p of d.plates) {
     const pulse = p.status === 'held' ? ` stroke="#fbbf24" stroke-width="3"` : "";
     const dim = p.status === 'magazine' ? ` opacity="0.45"` : "";
@@ -759,6 +780,10 @@ def main():
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
+        pass
+    except ExternalShutdownException:
+        # 关停时 spin 抛这个（它继承 RuntimeError，且 rclpy.ok() 仍为真，会穿过下面
+        # 的 ok() 判断）——不单独接住就会 exit 1，launch 报 process has died。
         pass
     except RuntimeError as e:
         # 坑（与 vision_node 同源）：SIGINT 后 rclpy 上下文已销毁，executor 仍去建 wait set，
