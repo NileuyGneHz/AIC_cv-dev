@@ -5,8 +5,8 @@
 #   ros2 run aic_plc_gateway rsc_link.py --host 192.168.3.99 --read CAM_DATA
 #   PLC 侧变量声明见 docs/guides/plcnext_rsc_setup.md §4；两边名字必须逐字一致。
 #
-# 说明：plc_gateway 目前只实现 Modbus TCP 从站；RSC 链路停在「标签表 + 读写」这一层，
-# 还没接进网关状态机（见 docs/guides/plc_integration.md §9）。
+# 说明：RSC 已接进网关状态机（backend:=rsc，IoBackend/RscBackend）。
+# 本文件是「标签 → PLC 变量路径」的唯一映射；现场只改 path，不改代码。
 #
 # 约定
 # ----

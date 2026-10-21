@@ -12,6 +12,8 @@ import time
 
 import numpy as np
 import rclpy
+from rclpy.qos import (HistoryPolicy, QoSProfile,
+                       ReliabilityPolicy)
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 
@@ -28,7 +30,11 @@ class SnapshotNode(Node):
         os.makedirs(self.out_dir, exist_ok=True)
         self.saved = 0
         self.last_save = 0.0
-        self.create_subscription(Image, self.topic, self._on_image, 1)
+        # 坑：相机 bridge 发布用 BEST_EFFORT。订阅端用默认（RELIABLE）时
+        # QoS 不兼容，一条也收不到，表现是「脚本跑完了但没有图」。
+        img_qos = QoSProfile(depth=1, history=HistoryPolicy.KEEP_LAST,
+                             reliability=ReliabilityPolicy.BEST_EFFORT)
+        self.create_subscription(Image, self.topic, self._on_image, img_qos)
         self.get_logger().info(
             "[snapshot] 订阅 %s，存 %d 张到 %s" % (self.topic, self.count, self.out_dir))
 

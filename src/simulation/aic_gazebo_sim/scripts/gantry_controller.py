@@ -106,7 +106,11 @@ class GantryController(Node):
         self.z_speed = declare_number(
             self, "z_speed", float(self.layout.gantry.get("z_speed", 0.20)))
         self.settle_s = declare_number(self, "settle_s", 0.15)
-        self.dwell_s = declare_number(self, "handle_dwell_s", 0.35)
+        # 默认值取 sim_layout.yaml（唯一数据源）；ROS 参数仍可覆盖。
+        # 原来这里写死 0.35，改 YAML 里 gantry.handle_dwell_s 不生效。
+        self.dwell_s = declare_number(
+            self, "handle_dwell_s",
+            float(self.layout.gantry.get("handle_dwell_s", 0.35)))
         self.travel_z = float(self.layout.gantry.get("travel_z", 0.0))
         # 吸盘工具基准（z_joint=0 时吸口下沿世界高度，与 model.sdf 一致）
         self.pad_z0 = self.layout.pad_z0()

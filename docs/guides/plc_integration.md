@@ -180,6 +180,11 @@ RSC 下该变量归 PLC 所有，网关写不动，**必须由 PLC 程序把 `TA
 | 2 | 台面无料 | 先发 GOTO 上料，再发 HANDLE |
 | 3 | 观察模式拒绝控制写 | 加 `allow_control:=true` 并停 `bt_runner` |
 | 4 | HANDLE 时无有效识别结果 | `CAM_DATA` 不在 1..4；等 `CAM_STATE=2` 再发 HANDLE |
+| 5 | 视觉超时（`CAM_STATE` 被置 3=FAIL） | 视觉节点没跑 / 话题断了；超时阈值 `cam_timeout_s`（默认 5 s） |
+
+> 目前只定义 0–5；表外的值按未知处理并告警。`CAM_ERR` 与 `ERR` 共用这套码。
+> `CAM_STATE` 不会永远停在 BUSY：触发拍照后超过 `cam_timeout_s` 仍无结果，
+> 网关自动置 FAIL 并写 `CAM_ERR=5`，PLC 侧可以据此重试或报警。
 
 坐标是**有符号 16 位补码**存放：读 `0xFFF6` 应解释成 `-10 mm`。多数 PLC 软件选
 `INT` 类型即可，选 `UINT` 会看到 65526。

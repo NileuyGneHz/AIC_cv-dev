@@ -3,7 +3,7 @@
 用法（在包目录下）:
     /usr/bin/python3 scripts/bench_offline.py \
         --dataset ~/AIC_cv-dev/logs/vision_ds \
-        --layout  ../simulation/aic_gazebo_sim/config/sim_layout.yaml
+        --layout  ../../simulation/aic_gazebo_sim/config/sim_layout.yaml
 
 目录约定二选一（自动识别）：
   1) slot_NN/*.png        —— 编号按 --layout 的 materials.types 取真值（仿真数据集）

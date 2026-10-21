@@ -739,14 +739,10 @@ def main(argv=None):
     ap.add_argument("--out", default=os.path.join(PKG, "worlds", "aic_warehouse.sdf"))
     ap.add_argument("--seed", type=int, default=None,
                     help="缺陷几何随机化种子；不给则读 materials.jitter_seed，0=关闭")
-    ap.add_argument("--cam-z", type=float, default=None,
-                    help="相机安装高度（z_carriage 内的 z 偏移），不给则读 camera.mount_z")
     args = ap.parse_args(argv)
 
     with open(args.layout, "r", encoding="utf-8") as f:
         layout = yaml.safe_load(f)
-    if args.cam_z is not None:
-        layout.setdefault("camera", {})["mount_z"] = args.cam_z
 
     sdf, types = build_sdf(layout, args.seed)
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
