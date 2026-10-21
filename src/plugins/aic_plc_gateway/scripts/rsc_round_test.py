@@ -21,13 +21,15 @@ RSC 后端没有 vPLC 时只有「内存假 PLC」，而假 PLC 是进程内对�
 """
 
 import sys
+import time
 
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from std_msgs.msg import String, UInt8
 
-from plc_gateway import (AX_INPOS, CAM_DONE, PlcGateway, TK_DONE, TK_GOTO,
-                         TK_HANDLE)
+from plc_gateway import (AX_INPOS, CAM_BUSY, CAM_DONE, CAM_FAIL,
+                         ERR_CAM_TIMEOUT, PlcGateway, TK_DONE, TK_GOTO,
+                         TK_HANDLE, _now)
 
 FAILS = []
 
@@ -148,6 +150,40 @@ def main():
     plc_write(node, "CAM_REQ", False)
     node._tick()
     check(node.cam_state == CAM_DONE, "CAM_REQ 落 0 后结果保持不变")
+
+    # 10) CAM_STATE 超时：视觉不来结果时不能永远停在 BUSY
+    node.cam_state = CAM_BUSY
+    node.cam_t0 = _now() - (node.cam_timeout_s + 1.0)
+    node._tick()
+    check(node.cam_state == CAM_FAIL, "视觉超时 -> CAM_STATE=FAIL（实际 %d）" % node.cam_state)
+    check(node.cam_err == ERR_CAM_TIMEOUT,
+          "CAM_ERR=ERR_CAM_TIMEOUT（实际 %d）" % node.cam_err)
+    check(plc_read(node, "DI_CAM_DONE") is False, "超时后 DI_CAM_DONE=false")
+
+    # 11) PLACED_CNT 去重：同一位点重复 handled 不能把计数刷过 12
+    node.placed_mask = 0
+    node.placed = 0
+    node.allow_control = True
+    node._on_handled(UInt8(data=5))
+    n1 = node.placed
+    node._on_handled(UInt8(data=5))
+    check(n1 == 1 and node.placed == 1,
+          "同一位点重复 handled 只计 1 次（实际 %d -> %d）" % (n1, node.placed))
+    node._on_handled(UInt8(data=99))
+    check(node.placed == 1, "越界位点不计数（实际 %d）" % node.placed)
+
+    # 12) 断链重连：close() 后下一次 read 自愈；退避窗口内快速失败不反复 connect
+    node.io.close()
+    vals = node.io.read()
+    check(isinstance(vals, dict) and "TASK_CMD" in vals, "close() 后 read 自动重连")
+    node.io.close()
+    node.io.link._next_try = time.monotonic() + 5.0
+    failed = False
+    try:
+        node.io.read()
+    except RuntimeError:
+        failed = True
+    check(failed, "退避窗口内不再重连（快速失败，不阻塞轮询）")
 
     node.io.close()
     node.destroy_node()

@@ -280,6 +280,10 @@ def _coerce(value: Any, iec: str) -> Any:
 
 
 # --------------------------------------------------------------------------- 链路
+RECONNECT_MIN_S = 2.0
+RECONNECT_MAX_S = 10.0
+
+
 class RscLink:
     """一条到 PLCnext 的 RSC 连接 + 一张标签表。
 
@@ -313,6 +317,11 @@ class RscLink:
 
         self._last_written: Dict[str, Any] = {}
         self._failed: Dict[str, int] = {}        # 标签 -> 最近一次错误码（只报一次）
+        # 断链重连：PLC 重启 / 网线拔插后不必重启网关。退避从 2 s 翻倍到 10 s，
+        # 否则每个 tick 都去 connect（不可达时会阻塞到 timeout_s），把 50 Hz 轮询拖死。
+        self._backoff = RECONNECT_MIN_S
+        self._next_try = 0.0
+        self.reconnects = 0
         self.connected = False
         self.reads = 0
         self.writes = 0
@@ -349,6 +358,34 @@ class RscLink:
         self._last_written.clear()
         LOG.info("RSC 已连接 %s:%d（%s）", self.host, self.port, self.map.describe())
 
+    def _ensure_connected(self) -> None:
+        """没连接就尝试重连（带退避）。失败抛 RuntimeError，调用方按「本轮跳过」处理。"""
+        if self._svc is not None:
+            return
+        # 用单调钟：现场校时 / NTP 跳变不该让退避窗口失效
+        now = time.monotonic()
+        if now < self._next_try:
+            raise RuntimeError(
+                "RSC 未连接（%.0f s 后重试；上次错误：%s）"
+                % (self._next_try - now, self.last_error or "无"))
+        # 首次连接不算「重连」：connected_at 为空才是第一次
+        first = self.connected_at is None
+        try:
+            self.connect()
+        except Exception as e:      # noqa: BLE001 - 连不上不是致命错误
+            self.last_error = str(e)
+            self._next_try = now + self._backoff
+            wait = self._backoff
+            self._backoff = min(self._backoff * 2, RECONNECT_MAX_S)
+            LOG.warning("RSC 重连失败：%s；%.0f s 后重试", e, wait)
+            raise RuntimeError("RSC 重连失败：%s" % e) from e
+        if not first:
+            self.reconnects += 1
+            LOG.info("RSC 已恢复连接（累计重连 %d 次）", self.reconnects)
+        self._backoff = RECONNECT_MIN_S
+        self.last_error = None
+        self._next_try = 0.0
+
     def _init_schema(self) -> None:
         if not self.map.structs:
             return
@@ -372,8 +409,7 @@ class RscLink:
         include_writes=True 时把 gw2plc 标签也读上来。网关状态机不用它（只需输入），
         但手工调试要能「写下去再读回来」，否则 --write X=1 --read X 永远是 None。
         """
-        if self._svc is None:
-            raise RuntimeError("RSC 未连接")
+        self._ensure_connected()
         dirs = (DIR_PLC2GW, DIR_BOTH) + ((DIR_GW2PLC,) if include_writes else ())
         reads = [t for t in self.map.tags.values() if t.direction in dirs]
         structs = [s for s in self.map.structs if s.direction in dirs]
@@ -384,7 +420,9 @@ class RscLink:
         try:
             items = self._svc.Read(names)
         except Exception as e:      # noqa: BLE001
-            self.connected = False
+            # close() 会把 _svc 置 None，下一次调用才会走重连；
+            # 只把 connected 置 False 的话 _svc 还在，会拿着坏掉的句柄反复失败。
+            self.close()
             raise RuntimeError("RSC 读失败：%s" % e) from e
 
         out: Dict[str, Any] = {}
@@ -419,8 +457,7 @@ class RscLink:
         返回成功写入的标签数。写失败只记一次日志并把该标签拉黑到下次重连，
         避免「变量名拼错」时每 50 ms 刷一行错误。
         """
-        if self._svc is None:
-            raise RuntimeError("RSC 未连接")
+        self._ensure_connected()
 
         items: List[Any] = []
         pending: Dict[str, Any] = {}
@@ -462,7 +499,7 @@ class RscLink:
         try:
             errs = self._svc.Write(tuple(items))
         except Exception as e:      # noqa: BLE001
-            self.connected = False
+            self.close()
             raise RuntimeError("RSC 写失败：%s" % e) from e
 
         ok = 0

@@ -150,6 +150,7 @@ ERR_NO_SLOT = 1
 ERR_NO_STAGED = 2
 ERR_OBSERVE = 3
 ERR_NO_TYPE = 4        # HANDLE 时没有有效识别结果
+ERR_CAM_TIMEOUT = 5    # 触发拍照后超时仍没有视觉结果
 
 
 def _now():
@@ -558,6 +559,9 @@ class PlcGateway(Node):
         self.declare_parameter("handled_topic", "/sim/handle_done")
         self.declare_parameter("ready_topic", "/sim/gantry_ready")
         self.declare_parameter("vision_result_topic", "/vision/material_type")
+        # 视觉通常 0.3 s 内出结果；给到 5 s 是覆盖机器卡顿与队列时延。
+        # 超时后 CAM_STATE 置 FAIL，不能让 PLC 无限等 BUSY。
+        self.declare_parameter("cam_timeout_s", 5.0)
         self.declare_parameter("vision_trigger_topic", "/vision/trigger")
 
         # ---- 协议后端（modbus | rsc）----
@@ -576,6 +580,7 @@ class PlcGateway(Node):
         # ---- 内部状态 ----
         self.cam_state = CAM_IDLE
         self.cam_t0 = None
+        self.cam_timeout_s = float(p("cam_timeout_s"))
         self.cam_slot = 0
         self.axis_state = AX_IDLE
         self.task_state = TK_IDLE
@@ -719,9 +724,18 @@ class PlcGateway(Node):
 
     def _on_handled(self, msg):
         slot = int(msg.data)
-        self.placed += 1
-        if 1 <= slot <= 16:
+        # 位点范围按实际物料数，不是写死的 16：越界位点会置出 mask 里不存在的位，
+        # 让 SHELF_BITS 与 PLACED_CNT 对不上。
+        if 1 <= slot <= self.n_mat:
+            # 同一位点重复 handled（重试、双控制器、队列积压）不能重复计数：
+            # PLACED_CNT 是给 PLC 算「还剩几块」的，涨到 13/12 会让 HMI 与联锁都错。
             self.placed_mask |= (1 << (slot - 1))
+        else:
+            self.get_logger().warn(
+                "handled 位点 %d 越界（应 1..%d），已忽略" % (slot, self.n_mat),
+                throttle_duration_sec=5.0)
+        # 计数一律由 mask 重算，天然去重且与 SHELF_BITS 永远一致
+        self.placed = bin(self.placed_mask).count("1")
         self.staged = 0
         self.held = False
         self.cam_type = 0
@@ -733,8 +747,28 @@ class PlcGateway(Node):
 
     # ---- 定时器 ----
     def _tick(self):
+        self._check_cam_timeout()
         self._poll_commands()
         self._publish_status()
+
+    def _check_cam_timeout(self):
+        """视觉迟迟不返回时把 CAM_STATE 从 BUSY 推到 FAIL。
+
+        坑：原实现只在收到结果时改状态。视觉节点崩了 / 话题断了 / 相机没出图时
+        CAM_STATE 永远停在 BUSY，PLC 侧按官方流程就会一直等，整线卡死且没有任何报错。
+        置 FAIL 后 PLC 可以自行决定重试或报警（CAM_ERR=ERR_CAM_TIMEOUT）。
+        """
+        if self.cam_state != CAM_BUSY or self.cam_t0 is None:
+            return
+        dt = _now() - self.cam_t0
+        if dt < self.cam_timeout_s:
+            return
+        self.cam_state = CAM_FAIL
+        self.cam_err = ERR_CAM_TIMEOUT
+        self.cam_ms = int(dt * 1000)
+        self.get_logger().warn(
+            "视觉结果 %.1f s 未返回，CAM_STATE 置 FAIL（ERR=%d）"
+            % (dt, ERR_CAM_TIMEOUT), throttle_duration_sec=10.0)
 
     def _poll_commands(self):
         try:

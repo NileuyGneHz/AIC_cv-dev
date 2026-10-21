@@ -38,7 +38,7 @@ import sys
 import time
 
 # ---------------------------------------------------------------- 寄存器地址
-CAM_STATE, CAM_DATA, CAM_MS = 1, 2, 3
+CAM_STATE, CAM_DATA, CAM_MS, CAM_ERR = 1, 2, 3, 4
 TASK_CMD, POS_SET = 5, 10
 X_ACT, Y_ACT, Z_ACT, AXIS_STATE = 11, 12, 13, 14
 SHELF_BITS, SHELF_FULL, PLACED_CNT, TASK_STATE = 20, 21, 22, 23
@@ -181,9 +181,17 @@ def run_control(mb, n_mat, timeout_inpos, timeout_cam, timeout_handle):
                      timeout_inpos, what="轴到位")
             t_inpos = time.monotonic() - t0
 
-            # 2) 等识别结果
-            wait_for(mb, lambda: mb.read_holding(CAM_STATE, 1)[0] == 2,
-                     timeout_cam, what="视觉结果")
+            # 2) 等识别结果。CAM_STATE: 1=BUSY 2=DONE 3=FAIL
+            #    FAIL 要立刻报，否则还要干等到 timeout_cam —— 现场看到的就是
+            #    「视觉早挂了，主站还在等」，误以为网关卡住。
+            def _cam_ready():
+                st = mb.read_holding(CAM_STATE, 1)[0]
+                if st == 3:
+                    ce = mb.read_holding(CAM_ERR, 1)[0]
+                    raise TimeoutError("视觉失败（CAM_STATE=FAIL，CAM_ERR=%d）" % ce)
+                return st == 2
+
+            wait_for(mb, _cam_ready, timeout_cam, what="视觉结果")
             cam = mb.read_holding(CAM_DATA, 2)
             t_cam = time.monotonic() - t0
 
