@@ -23,6 +23,7 @@ import time
 
 import cv2
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from cv_bridge import CvBridge
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
@@ -194,6 +195,8 @@ def main():
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
+        pass
+    except ExternalShutdownException:
         pass
     except RuntimeError as e:
         # 坑：关停瞬间 rclpy 仍在从已销毁的订阅里取消息，会抛
