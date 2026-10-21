@@ -55,6 +55,8 @@ export ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-1}"
 # 不起作用的话，两套仿真会共用 /world/aic_warehouse/* 话题，真值桩替对方秒回类型。
 # shellcheck source=lib/sim_domain.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib/sim_domain.sh"
+# shellcheck source=lib/sim_cleanup.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/sim_cleanup.sh"
 if [[ "${DOMAIN}" == "auto" ]]; then
   # 手挑固定号会撞：实测两个会话都选 7，同一分区里 53 条话题（两套 × 26 条）。
   # 自动分配会扫进程表 + 探测空分区，并把占用的号登记到 logs/.sim_domains。
@@ -115,11 +117,19 @@ kill_tree() {
   kill -TERM "${pid}" 2>/dev/null
 }
 cleanup() {
+  # 坑：不能「先 sleep 再 pgrep -P」。launch 收到 INT 后往往先退出，子进程被 reparent
+  #     到 1，pgrep -P 就再也查不到——kill_tree 永远不执行，gzserver 变成孤儿继续跑。
+  #     下一轮验收于是有两个物理世界抢同一批话题（表现为 RTF 掉到 1/10、到位超时）。
+  #     正确顺序：先快照子进程，再发信号。
+  local kids k
+  kids=$(pgrep -P "${LAUNCH_PID}" 2>/dev/null || true)
   kill -INT "${LAUNCH_PID}" 2>/dev/null
+  for k in ${kids}; do kill_tree "${k}"; done
+  kill -TERM "${LAUNCH_PID}" 2>/dev/null
   sleep 2
-  pgrep -P "${LAUNCH_PID}" >/dev/null 2>&1 && kill_tree "${LAUNCH_PID}"
-  sleep 1
   kill -KILL "${LAUNCH_PID}" 2>/dev/null
+  # 兜底：按进程名再清一遍（防插件残留 / reparent）
+  sim_kill_stale
   [[ -n "${DOMAIN}" ]] && sim_release_domain
 }
 trap cleanup EXIT

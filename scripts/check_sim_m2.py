@@ -83,6 +83,8 @@ def main():
                     help="场景布局 YAML（取 place_zones 与 materials.types）")
     ap.add_argument("--xy-tol", type=float, default=0.004,
                     help="落位与格心的水平容差（m，默认 4 mm）")
+    ap.add_argument("--label", default="决策",
+                    help="结果来源的名字（PLC 接管路径传「主站」，仅影响 PASS 文案）")
     args = ap.parse_args()
 
     layout = yaml.safe_load(open(args.layout, encoding="utf-8"))
@@ -187,11 +189,11 @@ def main():
             print("  - " + f)
         return 1
     if warns:
-        print("PASS：决策 %d/%d OK、夹持与释放各 %d 次；落位未核对（见上）"
-              % (len(rows), n_slots, n_attach))
+        print("PASS：%s %d/%d OK、夹持与释放各 %d 次；落位未核对（见上）"
+              % (args.label, len(rows), n_slots, n_attach))
     else:
-        print("PASS：决策 %d/%d OK、夹持与释放各 %d 次、%d 块铁片全部落在对应类型的格内"
-              % (len(rows), n_slots, n_attach, len(poses)))
+        print("PASS：%s %d/%d OK、夹持与释放各 %d 次、%d 块铁片全部落在对应类型的格内"
+              % (args.label, len(rows), n_slots, n_attach, len(poses)))
     return 0
 
 
