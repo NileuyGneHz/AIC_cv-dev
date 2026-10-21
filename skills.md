@@ -26,7 +26,7 @@
 | `aic-sim-capture` | 「录制省赛视频」「仿真平台」 | 仿真平台操作要点、机位与录屏规范清单、一镜到底自检表 | 规划 |
 | `aic-submission-pack` | 「打包提交」「整理材料」 | 技术文档（PPT）结构、源码清理（去隐私 / 去大文件）、命名与清单核对 | 规划 |
 | `aic-handeye-calib` | 「标定相机和机械臂」 | 标定板采集、解算脚本框架、参数落盘与验证 | 规划 |
-| `aic-plc-comm` | 「PC 和 PLC 通信」「串口联调」 | 协议选型、帧格式约定、联调排查清单 | 规划 |
+| `aic-plc-gateway` | 「接 PLC」「Modbus 不动」「RSC 联调」「握手超时」 | Modbus TCP / PLCnext RSC 双后端、`IoBackend` 切法、四层验证阶梯（协议层→进程内整轮→跨进程端到端→真机）、三类假象的定位顺序 | 可用 |
 | `aic-motion-3axis` | 「三轴 / 抓取动作调试」 | 坐标系与行程定义、点位示教、回零 / 限位安全规范 | 规划 |
 | `aic-gazebo-sim` | 「仿真不动」「相机没图」「改 Gazebo 场景」「夹不住/放不下」 | Fortress + ROS 2 仿真骨架、世界生成、ros_gz_bridge 方向（含关节反馈桥）、到位判定闭环、DetachableJoint 夹持与码放、20 个坑（含视觉）、落位核对探针 | 可用 |
 
