@@ -195,7 +195,7 @@ if v:
 | `aic_behavior_tree` | `src/decision/aic_behavior_tree` | C++ | BT.CPP 4.10 主树 + VisionClient/ControlBridge | 可用 |
 | `aic_vision_trad` | `src/vision/aic_vision_trad` | Python | 传统视觉四分类 | 可用 |
 | `aic_gazebo_sim` | `src/simulation/aic_gazebo_sim` | Python/XML | 世界生成、龙门控制器、抓帧 | 可用 |
-| `aic_plc_gateway` | `src/plugins/aic_plc_gateway` | Python | Modbus 从站（+ RSC 标签层） | Modbus 可用，**RSC 未接线** |
+| `aic_plc_gateway` | `src/plugins/aic_plc_gateway` | Python | PLC 网关（Modbus / RSC 双后端） | 两种后端均可用；RSC 仅干跑验证，**未接真 vPLC** |
 | `aic_dashboard` | `src/plugins/aic_dashboard` | Python | 判分看板 + 自由机位 | 可用 |
 | `aic_io_bridge` / `aic_motion` / `aic_vision_core` / `aic_vision_dl` / `aic_sim_devices` | `src/**` | — | 规划中的占位目录 | **只有 `.gitkeep`，别以为有实现** |
 
@@ -230,7 +230,7 @@ gantry_controller.py ──► /aic/joint/{x,y,z}/cmd_pos ──► ros_gz_bridg
 |---|---|---|---|---|
 | ROS 2 话题 | 全部节点 | 进程间 | 仿真全链路 | 无 |
 | Modbus TCP | `plc_gateway.py`（自写从站，纯标准库） | PLC 当主站，连网关 5020 | 软 PLC 对拍、教学 | 无 |
-| PLCnext RSC | `rsc_link.py`（645 行） | 网关当客户端，连 vPLC 41100 | 干跑可验标签表 | **没被任何节点引用**；`CMakeLists.txt` 没装它 |
+| PLCnext RSC | `rsc_link.py` + `RscBackend` | 网关当客户端，连 vPLC 41100 | `backend:=rsc` 与 Modbus 同一套状态机；干跑可跑整轮握手 | 没有 vPLC，现场变量名未核对 |
 
 ### 2.4 关键文件索引（改之前先读）
 
@@ -246,8 +246,8 @@ gantry_controller.py ──► /aic/joint/{x,y,z}/cmd_pos ──► ros_gz_bridg
 | `src/decision/aic_behavior_tree/src/vision_client.cpp` | — | 收识别结果，`seq` 过滤 |
 | `src/vision/aic_vision_trad/scripts/vision_node.py` | 216 | 订阅 `/camera/image`，发 `String` |
 | `src/plugins/aic_dashboard/scripts/score_node.py` | 806 | 判分看板（纯旁路，只订阅） |
-| `src/plugins/aic_plc_gateway/scripts/plc_gateway.py` | 708 | Modbus 从站 + 状态机 |
-| `src/plugins/aic_plc_gateway/scripts/rsc_link.py` | 645 | RSC 标签表层（未被引用） |
+| `src/plugins/aic_plc_gateway/scripts/plc_gateway.py` | 900+ | 状态机 + Modbus/RSC 双后端 |
+| `src/plugins/aic_plc_gateway/scripts/rsc_link.py` | 660 | RSC 标签表层（被 `RscBackend` 引用） |
 | `src/plugins/aic_plc_gateway/config/plc_rsc_map.yaml` | 80 | 26 个标签 → PLC 变量路径 |
 
 ### 2.5 官方 ↔ 仿真 对照（写汇报材料直接用）
@@ -274,7 +274,7 @@ gantry_controller.py ──► /aic/joint/{x,y,z}/cmd_pos ──► ros_gz_bridg
 | 1 | `decision_control_interface.md` 描述的是**旧版消息**（`command`/`visit_index`/`material_type:string`），实际 `MaterialTask.msg` 是 `action:string` + `uint8` 字段 | 对比 `docs/guides/decision_control_interface.md` §2 与 `src/plugins/aic_msgs/msg/MaterialTask.msg` | **以 `.msg` 为准**；改代码时别照文档抄字段名 |
 | 2 | ~~`plc_rsc_map.yaml:4` 写 `backend:=rsc`，但 launch 没有这个参数~~ | ~~`launch/plc_gateway.launch.py` 全文~~ | **已修**（`f92f629`）：注释改为 `rsc_link.py` 的实际用法，并写明 RSC 尚未接进网关状态机 |
 | 3 | ~~`CMakeLists.txt` 只装 2 个 py + `launch/`~~ | `install/aic_plc_gateway/` 实查 | **已修**（`f92f629`）：补齐 `config/`、`third_party/`、`rsc_link.py`；换目录 `ros2 run` 也能找到 SDK |
-| 4 | `rsc_link.py --read` 读不到 `gw2plc` 标签（`read_all()` 只收 `plc2gw/both`） | `rsc_link.py:373` | 任务 T08；临时验证用 `--dry-run` 或改 `dir: both` |
+| 4 | ~~`rsc_link.py --read` 读不到 `gw2plc` 标签~~ | `rsc_link.py:369` | **已修**：`read_all(include_writes=True)`，CLI `--read` 自动带上 |
 | 5 | 官方变量有两代（`Cam` 结构体 / `Rsc_xExecute`+`image_result`），文档之间不一致 | 【手册】§3.1 vs【RSC】§2 | 任务 T11 现场探测，不要二选一硬编码 |
 | 6 | `LibMvCamera` 全是 x86-64 | `file` 实测 | 上机前换 aarch64 版 |
 | 7 | `PLCnextBase` 只有工具 FB，**没有运动控制 FB** | 解包后 74 个 POU 分类 | 别指望它让轴动 |
@@ -327,14 +327,14 @@ gantry_controller.py ──► /aic/joint/{x,y,z}/cmd_pos ──► ros_gz_bridg
   `ls install/aic_plc_gateway/share/aic_plc_gateway/config/plc_rsc_map.yaml` 存在，
   `install/aic_plc_gateway/lib/aic_plc_gateway/rsc_link.py` 存在。
 
-#### T04 launch 加 backend 参数
+#### T04 launch 加 backend 参数 —— **已完成**（`backend` + 6 个 RSC 参数已加）
 - **文件**：`src/plugins/aic_plc_gateway/launch/plc_gateway.launch.py`
 - **动作**：加 `backend`（默认 `modbus`）、`rsc_host`、`rsc_port`（41100）、`rsc_user`（admin）、
   `rsc_map`（默认 share 下的 yaml）。`backend:=rsc` 时把对应参数传进节点。
 - **验收**：`ros2 launch aic_plc_gateway plc_gateway.launch.py --show-args` 能看到全部新参数；
   `backend:=modbus` 行为与现在**完全一致**。
 
-#### T05 抽出 IoBackend（重构，不改行为）
+#### T05 抽出 IoBackend（重构，不改行为） —— **已完成**（`IoBackend`/`ModbusBackend` 已落地）
 - **文件**：`scripts/plc_gateway.py`
 - **动作**：定义最小接口
   ```python
@@ -352,7 +352,7 @@ gantry_controller.py ──► /aic/joint/{x,y,z}/cmd_pos ──► ros_gz_bridg
 - **坑**：`_on_joint_state` / `_on_vision` 等回调会直接写 `store.holding[...]`，这些要么改成写
   本地状态再由 `write()` 汇总，要么让 backend 暴露 `set_status()`。**别让回调绕过 backend**。
 
-#### T06 实现 RscBackend
+#### T06 实现 RscBackend —— **已完成**（`RscBackend` 已落地，干跑整轮通过）
 - **文件**：`scripts/plc_gateway.py`（或新文件 `scripts/rsc_backend.py`）
 - **动作**：`RscBackend` 直接包 `rsc_link.RscLink`——它的 `read_all()/write_all()` 已经是
   `{标签: 值}` 语义，天然对齐 `IoBackend`。注意 `read_all()` 只在连接时建 schema。
@@ -370,7 +370,7 @@ gantry_controller.py ──► /aic/joint/{x,y,z}/cmd_pos ──► ros_gz_bridg
 - **验收**：`docs/adr/0002-plc-contract.md` 写清选型理由、字段对照表、切换方法。
 - **依赖**：无（可与 T05 并行）。
 
-#### T08 修 `--read` 读不到 gw2plc 标签
+#### T08 修 `--read` 读不到 gw2plc 标签 —— **已完成**（已修）
 - **文件**：`scripts/rsc_link.py:369-408`
 - **动作**：给 `read_all()` 加 `include_writes=False` 参数；CLI 显式 `--read` 某个标签时强制读它。
 - **验收**：`--dry-run --write HEARTBEAT=0 --read HEARTBEAT` 能打印 `0` 而不是 `None`。

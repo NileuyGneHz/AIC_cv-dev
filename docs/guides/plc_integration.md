@@ -110,6 +110,34 @@ A 与 B 的差别只在"网关放哪"，不在"能不能"。
 **注意**：官方推荐 RSC，本实现选 Modbus 是因为没有 vPLC 硬件时 RSC 无法真联调。
 两者的**变量语义完全相同**，换协议只换传输层（见 §9）。
 
+### 4.1 两种后端怎么切（同一套状态机）
+
+`plc_gateway.py` 里 `IoBackend` 是唯一与协议有关的一层，状态机只读写
+**语义标签**（`TASK_CMD` / `POS_SET` / `COIL_TRIGGER` / `DI_INPOS` …）。换后端不改状态机：
+
+```bash
+# Modbus TCP 从站（默认）：PLC 主站连 5020
+ros2 launch aic_plc_gateway plc_gateway.launch.py \
+    backend:=modbus port:=5020 allow_control:=true
+
+# PLCnext RSC 客户端：连 vPLC 41100
+ros2 launch aic_plc_gateway plc_gateway.launch.py \
+    backend:=rsc rsc_host:=192.168.3.99 allow_control:=true
+
+# RSC 但没有 vPLC：内存假 PLC，可验映射与状态机（证明不了现场变量名）
+ros2 launch aic_plc_gateway plc_gateway.launch.py \
+    backend:=rsc rsc_dry_run:=true allow_control:=true
+```
+
+| 后端 | 谁当主谁当从 | 无硬件时怎么测 | 覆盖不到的 |
+|---|---|---|---|
+| `modbus` | PLC 当**主站**，网关当从站 | `plc_master_demo.py` 跨进程驱动 | — |
+| `rsc` | 网关当**客户端**，连 PLC | `rsc_dry_run:=true` + `rsc_round_test.py` | 现场变量名是否正确 |
+
+**RSC 与 Modbus 的一个行为差异**：Modbus 下 `TASK_CMD` 是网关自己清 0 作为应答；
+RSC 下该变量归 PLC 所有，网关写不动，**必须由 PLC 程序把 `TASK_CMD` 复位**，
+否则只有边沿变化才会再次触发（`plc_gateway.py` 里靠 `_last_cmd` 做边沿检测）。
+
 ---
 
 ## 5. 变量映射表
@@ -309,8 +337,16 @@ END_CASE
 | 读保持寄存器 11–13 | `rsc.read_variable("Axis.X.Actual")` 等 |
 | 读离散输入 0 | `rsc.read_variable("Axis.X.InPos")` |
 
-要改的只有 `ModbusTcpSlave` 这一层（约 200 行），`PlcGateway` 里的状态机、
-ROS 话题订阅、位图逻辑全部不动。这也是当初把协议层单独抽出来的原因。
+**这一层已经抽好了**（2026-10-21）：`IoBackend` / `ModbusBackend` / `RscBackend`
+三个类，状态机只调 `read()` / `write()`，认的是语义标签而不是寄存器地址。
+切后端用的是 launch 参数，不改代码：
+
+```bash
+ros2 launch aic_plc_gateway plc_gateway.launch.py backend:=rsc allow_control:=true
+```
+
+现场只需要改 `config/plc_rsc_map.yaml` 里的变量路径（`path` 字段），
+状态机、ROS 话题订阅、位图逻辑一行不动。
 
 真机部署时还要注意（手册里的坑）：
 
@@ -330,6 +366,9 @@ ROS 话题订阅、位图逻辑全部不动。这也是当初把协议层单独�
 | 读寄存器全 0 | 仿真没跑 / domain 不一致 | 两边 `ROS_DOMAIN_ID` 必须相同 |
 | `POS_SET` 写了没反应 | 观察模式 | 加 `allow_control:=true`，且停 `bt_runner` |
 | `ERR=3` | 观察模式收到控制写 | 同上 |
+| `backend:=rsc` 起不来，报 `SDK 未找到` | PyPlcnextRsc wheel 不在 | 用 `ros2 run`（会从 share/third_party 找）；或设 `PLCNEXT_RSC_WHEEL` |
+| RSC 连上但读回全 0 | 变量名与 PLC 工程不一致，`Read` 逐条报 NotExists | `ros2 run aic_plc_gateway rsc_link.py --describe` 对名字；真机先按 `plcnext_rsc_setup.md` §5 探变量 |
+| RSC 下 TASK_CMD 写 1 只生效一次 | 该变量归 PLC，网关清不了 | PLC 程序在收到执行后把 `TASK_CMD` 复位 |
 | `ERR=1` | `POS_SET` 越界（不在 1..12） | 检查 PLC 变量类型，别写成 40001 |
 | `ERR=2` | 台面无料却要吸附 | 先 `TASK_CMD=1` 上料 |
 | 坐标读出 65526 | 寄存器是 uint16，你按无符号读了 | 改成 `INT`（int16）解读 |
@@ -346,6 +385,9 @@ ROS 话题订阅、位图逻辑全部不动。这也是当初把协议层单独�
 ```bash
 # 协议层（不需要仿真）：起网关 + 主站读 3 次
 bash scripts/test_plc_proto.sh
+
+# RSC 后端整轮握手（不需要仿真、不需要 vPLC，约 3 s）
+bash scripts/test_plc_rsc.sh
 
 # 端到端（需要完整仿真，约 160 s）
 bash scripts/test_plc_full.sh      # 12 块料、PLC 接管整轮
@@ -364,6 +406,8 @@ bash scripts/test_plc_one.sh       # 只跑 1 块，改完代码先跑这个，�
 | 落位 | 四列各三层，按类型填满 L1→L3 |
 | 末态 | `SHELF_BITS=111111111111`、`SHELF_FULL=1`、`PLACED_CNT=12` |
 | 协议层 | 只读模式心跳递增、寄存器/线圈/离散输入读写正常 |
+| RSC 后端 | 干跑整轮握手 15 项断言全过：GOTO/HANDLE 迁移、CAM_DATA 回写、
+  SHELF_BITS 置位、负坐标 -10 mm 不被折成 65526、心跳递增 |
 
 接管整轮比决策层整轮（145 s）略快，因为主站是「一次握手接着下一次」没有
 行为树的 tick 周期；两者动作序列完全相同。
