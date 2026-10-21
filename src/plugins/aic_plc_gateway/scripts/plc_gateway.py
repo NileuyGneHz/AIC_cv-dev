@@ -392,6 +392,144 @@ class ModbusTcpSlave:
 
 
 # ---------------------------------------------------------------- ROS 节点
+# ---------------------------------------------------------------- 后端抽象
+# 语义标签 -> (Modbus 表, 偏移)。状态机只认标签名，不认识寄存器也不认识 PLC 变量路径：
+# Modbus 后端按表+偏移读写，RSC 后端按 config/plc_rsc_map.yaml 的路径读写。
+TAG_ADDR = {
+    "CAM_REQ": ("holding", CAM_REQ),
+    "CAM_STATE": ("holding", CAM_STATE),
+    "CAM_DATA": ("holding", CAM_DATA),
+    "CAM_MS": ("holding", CAM_MS),
+    "CAM_ERR": ("holding", CAM_ERR),
+    "TASK_CMD": ("holding", TASK_CMD),
+    "POS_SET": ("holding", POS_SET),
+    "X_ACT": ("holding", X_ACT),
+    "Y_ACT": ("holding", Y_ACT),
+    "Z_ACT": ("holding", Z_ACT),
+    "AXIS_STATE": ("holding", AXIS_STATE),
+    "SHELF_BITS": ("holding", SHELF_BITS),
+    "SHELF_FULL": ("holding", SHELF_FULL),
+    "PLACED_CNT": ("holding", PLACED_CNT),
+    "TASK_STATE": ("holding", TASK_STATE),
+    "HEARTBEAT": ("holding", HEARTBEAT),
+    "ERR": ("holding", ERR),
+    "COIL_TRIGGER": ("coil", COIL_TRIGGER),
+    "COIL_ATTACH": ("coil", COIL_ATTACH),
+    "COIL_DETACH": ("coil", COIL_DETACH),
+    "COIL_RESET": ("coil", COIL_RESET),
+    "DI_INPOS": ("discrete", DI_INPOS),
+    "DI_CAM_DONE": ("discrete", DI_CAM_DONE),
+    "DI_HELD": ("discrete", DI_HELD),
+    "DI_FULL": ("discrete", DI_FULL),
+    "DI_READY": ("discrete", DI_READY),
+}
+
+# 每个 tick 要读的输入（PLC 写、网关读）。顺序无关，只是让读取集中在一处。
+INPUT_TAGS = ("CAM_REQ", "TASK_CMD", "POS_SET",
+              "COIL_TRIGGER", "COIL_ATTACH", "COIL_DETACH", "COIL_RESET")
+
+
+class IoBackend:
+    """PLC I/O 后端。状态机只调 read()/write()，换协议不动状态机。"""
+
+    name = "base"
+
+    def open(self):
+        raise NotImplementedError
+
+    def close(self):
+        pass
+
+    def read(self):
+        """读一次全部输入，返回 {标签: 值}。缺的标签由调用方按默认值处理。"""
+        raise NotImplementedError
+
+    def write(self, values):
+        """把状态写到 PLC。values 的键必须在 TAG_ADDR 里。"""
+        raise NotImplementedError
+
+    def describe(self):
+        return self.name
+
+
+class ModbusBackend(IoBackend):
+    """Modbus TCP 从站：标签落在四张数据表里，主站通过 socket 读写。"""
+
+    name = "modbus"
+
+    def __init__(self, host, port, unit_id, log):
+        self.host, self.port, self.unit_id = host, int(port), int(unit_id)
+        self.store = DataStore()
+        self.slave = ModbusTcpSlave(self.store, host, self.port, self.unit_id, log)
+
+    def open(self):
+        self.slave.start()
+
+    def close(self):
+        self.slave.stop()
+
+    def _table(self, name):
+        return {"holding": self.store.holding,
+                "coil": self.store.coils,
+                "discrete": self.store.discrete}[name]
+
+    def read(self):
+        with self.store.lock:
+            out = {}
+            for tag in INPUT_TAGS:
+                table, off = TAG_ADDR[tag]
+                out[tag] = self._table(table)[off]
+            return out
+
+    def write(self, values):
+        # 有符号量（坐标 mm）在这里才折成 uint16：RSC 后端要的是真负数，不能提前掩码。
+        with self.store.lock:
+            for tag, v in values.items():
+                table, off = TAG_ADDR[tag]
+                if table == "holding":
+                    self._table(table)[off] = int(v) & 0xFFFF
+                else:
+                    self._table(table)[off] = bool(v)
+
+    def describe(self):
+        return "modbus tcp %s:%d unit=%d" % (self.host, self.port, self.unit_id)
+
+
+class RscBackend(IoBackend):
+    """PLCnext RSC：一次 Read 取全部输入，写只发变化过的标签。
+
+    真机前置条件：PLC 侧变量名与 config/plc_rsc_map.yaml 逐字一致
+    （见 docs/guides/plcnext_rsc_setup.md §2）。没有 vPLC 时用 rsc_dry_run=true
+    走内存假 PLC，可完整验证映射与状态机，但证明不了现场变量名对不对。
+    """
+
+    name = "rsc"
+
+    def __init__(self, map_path, host, port, user, password, dry_run, timeout_s=5.0):
+        from rsc_link import RscLink, RscMap          # 只有选 RSC 才需要这个模块
+        self.map_path = map_path
+        self.link = RscLink(RscMap.load(map_path), host, int(port),
+                            user or None, password or None,
+                            timeout_s=float(timeout_s), dry_run=bool(dry_run))
+
+    def open(self):
+        self.link.connect()
+
+    def close(self):
+        self.link.close()
+
+    def read(self):
+        return self.link.read_all()
+
+    def write(self, values):
+        # write_all 只写发生变化的标签（心跳每秒变，其余按需），省往返
+        self.link.write_all(values)
+
+    def describe(self):
+        mode = "干跑（内存假 PLC）" if self.link.dry_run else self.link.host
+        return "rsc %s  标签表=%s" % (mode, self.map_path)
+
+
 class PlcGateway(Node):
     def __init__(self):
         super().__init__("plc_gateway")
@@ -411,10 +549,18 @@ class PlcGateway(Node):
         self.declare_parameter("vision_result_topic", "/vision/material_type")
         self.declare_parameter("vision_trigger_topic", "/vision/trigger")
 
+        # ---- 协议后端（modbus | rsc）----
+        self.declare_parameter("backend", "modbus")
+        self.declare_parameter("rsc_host", "192.168.3.99")
+        self.declare_parameter("rsc_port", 41100)
+        self.declare_parameter("rsc_user", "admin")
+        self.declare_parameter("rsc_password", "plcnext")
+        self.declare_parameter("rsc_map", "")        # 空 = 用包里默认标签表
+        self.declare_parameter("rsc_dry_run", False) # true = 内存假 PLC
+
         p = lambda n: self.get_parameter(n).value
         self.allow_control = bool(p("allow_control"))
         self.n_mat = int(p("n_materials"))
-        self.store = DataStore()
 
         # ---- 内部状态 ----
         self.cam_state = CAM_IDLE
@@ -424,6 +570,8 @@ class PlcGateway(Node):
         self.task_state = TK_IDLE
         self.staged = 0          # 置物台上的物料号，0=空
         self.cam_type = 0        # 最近一次识别结果 1..4，0=未识别
+        self.cam_ms = 0          # 本次识别耗时，随状态一起写给 PLC
+        self.cam_err = 0
         self.placed_mask = 0     # bit(n-1) = 第 n 号已入位
         self.placed = 0
         self.goto_cnt = 0
@@ -465,25 +613,43 @@ class PlcGateway(Node):
         self.create_subscription(UInt8, p("handled_topic"), self._on_handled, 10)
         self.create_subscription(Bool, p("ready_topic"), self._on_ready, 10)
 
-        # ---- Modbus 从站 ----
-        self.slave = ModbusTcpSlave(self.store, str(p("host")), int(p("port")),
-                                    int(p("unit_id")), self._slave_log)
+        # ---- 协议后端（modbus | rsc）----
+        self.io = self._make_backend(p)
         try:
-            self.slave.start()
+            self.io.open()
         except OSError as e:
             self.get_logger().error(
                 "Modbus 端口 %d 绑定失败：%s（被占用？低于 1024 需 root）"
                 % (int(p("port")), e))
             raise
+        except Exception as e:      # RSC 连不上 / 标签表读不了
+            self.get_logger().error("协议后端 %s 启动失败：%s" % (p("backend"), e))
+            raise
 
         self.create_timer(1.0 / max(5.0, float(p("poll_hz"))), self._tick)
 
         self.get_logger().info(
-            "PLC 网关就绪：modbus tcp %s:%d unit=%d，模式=%s"
-            % (p("host"), int(p("port")), int(p("unit_id")),
+            "PLC 网关就绪：%s，模式=%s"
+            % (self.io.describe(),
                "接管" if self.allow_control else "观察（只读，可与 bt_runner 共存）"))
 
     # ---- 内部 ----
+    def _make_backend(self, p):
+        """按 backend 参数造后端。换协议只改这里，状态机不认协议。"""
+        kind = str(p("backend")).strip().lower()
+        if kind == "modbus":
+            return ModbusBackend(str(p("host")), int(p("port")), int(p("unit_id")),
+                                 self._slave_log)
+        if kind == "rsc":
+            map_path = str(p("rsc_map")).strip()
+            if not map_path:
+                import rsc_link
+                map_path = str(rsc_link._default_map())
+            return RscBackend(map_path, str(p("rsc_host")), int(p("rsc_port")),
+                              str(p("rsc_user")), str(p("rsc_password")),
+                              bool(p("rsc_dry_run")))
+        raise ValueError("backend 只能是 modbus 或 rsc，收到 %r" % kind)
+
     def _slave_log(self, text):
         self.get_logger().info("[modbus] " + text)
 
@@ -533,10 +699,10 @@ class PlcGateway(Node):
             return
         self.cam_state = CAM_DONE
         self.cam_type = tid if tid in (1, 2, 3, 4) else 0
-        with self.store.lock:
-            self.store.holding[CAM_DATA] = tid & 0xFFFF
-            self.store.holding[CAM_MS] = int((_now() - self.cam_t0) * 1000) if self.cam_t0 else 0
-            self.store.holding[CAM_ERR] = 0
+        # 识别结果先落到本地状态，由 _publish_status 统一写给 PLC：
+        # 回调线程不直接碰协议层——RSC 是 TCP 往返，两个线程同时写会串包。
+        self.cam_ms = int((_now() - self.cam_t0) * 1000) if self.cam_t0 else 0
+        self.cam_err = 0
 
     def _on_handled(self, msg):
         slot = int(msg.data)
@@ -558,25 +724,30 @@ class PlcGateway(Node):
         self._publish_status()
 
     def _poll_commands(self):
-        with self.store.lock:
-            task_cmd = self.store.holding[TASK_CMD]
-            pos = self.store.holding[POS_SET]
-            cam_req = self.store.holding[CAM_REQ]
-            trig = self.store.coils[COIL_TRIGGER]
-            att = self.store.coils[COIL_ATTACH]
-            det = self.store.coils[COIL_DETACH]
-            rst = self.store.coils[COIL_RESET]
+        try:
+            st = self.io.read()
+        except Exception as e:      # RSC 断链 / 网络抖动：本轮跳过，别把节点搞崩
+            self.get_logger().warn("读取 PLC 输入失败：%s" % e, throttle_duration_sec=5.0)
+            return
+
+        task_cmd = int(st.get("TASK_CMD", 0) or 0)
+        pos = int(st.get("POS_SET", 0) or 0)
+        cam_req = bool(st.get("CAM_REQ", False))
+        trig = bool(st.get("COIL_TRIGGER", False))
+        att = bool(st.get("COIL_ATTACH", False))
+        det = bool(st.get("COIL_DETACH", False))
+        rst = bool(st.get("COIL_RESET", False))
 
         # 任务：先写 POS_SET 设定目标，再写 TASK_CMD 触发（PLC 的「设定值 + 执行位」）
+        # Modbus 下网关把 TASK_CMD 清 0 作为应答；RSC 下该标签是 PLC 写的，写不动，
+        # 需要 PLC 程序自己把 TASK_CMD 复位（否则只有边沿变化才会再次触发）。
         if task_cmd and task_cmd != self._last_cmd:
             self._exec_task(task_cmd, pos)
-            with self.store.lock:
-                self.store.holding[TASK_CMD] = 0
+            self.io.write({"TASK_CMD": 0})
         self._last_cmd = task_cmd
 
         if cam_req and self.allow_control:
-            with self.store.lock:
-                self.store.holding[CAM_REQ] = 0
+            self.io.write({"CAM_REQ": 0})
             self.trigger_pub.publish(Empty())
             self.cam_state = CAM_BUSY
             self.cam_t0 = _now()
@@ -584,20 +755,17 @@ class PlcGateway(Node):
 
         if trig and not self._last_trigger:
             self.trigger_pub.publish(Empty())
-            with self.store.lock:
-                self.store.coils[COIL_TRIGGER] = False
+            self.io.write({"COIL_TRIGGER": False})
         self._last_trigger = trig
 
         if att and not self._last_attach:
             self._exec_attach()
-            with self.store.lock:
-                self.store.coils[COIL_ATTACH] = False
+            self.io.write({"COIL_ATTACH": False})
         self._last_attach = att
 
         if det and not self._last_detach:
             self._exec_detach()
-            with self.store.lock:
-                self.store.coils[COIL_DETACH] = False
+            self.io.write({"COIL_DETACH": False})
         self._last_detach = det
 
         if rst and not self._last_reset:
@@ -608,8 +776,8 @@ class PlcGateway(Node):
             self.err = ERR_NONE
             self.task_state = TK_IDLE
             self.cam_state = CAM_IDLE
-            with self.store.lock:
-                self.store.coils[COIL_RESET] = False
+            self.cam_type = 0
+            self.io.write({"COIL_RESET": False})
             self.get_logger().info("PLC 复位")
         self._last_reset = rst
 
@@ -682,28 +850,34 @@ class PlcGateway(Node):
             self._hb = (self._hb + 1) & 0xFFFF
             self._hb_t = now
         full = (self.placed_mask & ((1 << self.n_mat) - 1)) == ((1 << self.n_mat) - 1)
-        with self.store.lock:
-            h = self.store.holding
-            h[HEARTBEAT] = self._hb
-            h[CAM_STATE] = self.cam_state
-            h[X_ACT] = to_int16_mm(self.actual["x"]) & 0xFFFF
-            h[Y_ACT] = to_int16_mm(self.actual["y"]) & 0xFFFF
-            h[Z_ACT] = to_int16_mm(self.actual["z"]) & 0xFFFF
-            h[AXIS_STATE] = self.axis_state
-            h[SHELF_BITS] = self.placed_mask & 0xFFFF
-            h[SHELF_FULL] = 1 if full else 0
-            h[PLACED_CNT] = self.placed & 0xFFFF
-            h[TASK_STATE] = self.task_state
-            h[ERR] = self.err
-            d = self.store.discrete
-            d[DI_INPOS] = (self.axis_state == AX_INPOS)
-            d[DI_CAM_DONE] = (self.cam_state == CAM_DONE)
-            d[DI_HELD] = self.held
-            d[DI_FULL] = full
-            d[DI_READY] = self.ready
+        try:
+            self.io.write({
+                "HEARTBEAT": self._hb,
+                "CAM_STATE": self.cam_state,
+                "CAM_DATA": self.cam_type,
+                "CAM_MS": self.cam_ms,
+                "CAM_ERR": self.cam_err,
+                # 坐标给真负数：折成 uint16 是 Modbus 后端的事，RSC 要的是 INT
+                "X_ACT": to_int16_mm(self.actual["x"]),
+                "Y_ACT": to_int16_mm(self.actual["y"]),
+                "Z_ACT": to_int16_mm(self.actual["z"]),
+                "AXIS_STATE": self.axis_state,
+                "SHELF_BITS": self.placed_mask,
+                "SHELF_FULL": 1 if full else 0,
+                "PLACED_CNT": self.placed,
+                "TASK_STATE": self.task_state,
+                "ERR": self.err,
+                "DI_INPOS": self.axis_state == AX_INPOS,
+                "DI_CAM_DONE": self.cam_state == CAM_DONE,
+                "DI_HELD": self.held,
+                "DI_FULL": full,
+                "DI_READY": self.ready,
+            })
+        except Exception as e:
+            self.get_logger().warn("写 PLC 状态失败：%s" % e, throttle_duration_sec=5.0)
 
     def shutdown(self):
-        self.slave.stop()
+        self.io.close()
 
 
 def main():
