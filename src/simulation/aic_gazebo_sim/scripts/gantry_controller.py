@@ -6,7 +6,7 @@
 
 M3 轮次语义（官方 VirtualNext 平台：置物台上料 -> 拍照 -> 吸盘取 -> 放货架列位）
 --------
-* GOTO(slot)：第 k 个 GOTO = 第 k 轮。先把 material_k 从供料管传送到置物台
+* GOTO(slot)：第 k 个 GOTO = 第 k 轮。先把 material_k 从来料架格位传送到置物台
   （ign service set_pose；上一轮识别失败留在台面的物料先送回收位），
   然后龙门走到置物台上方，到位发 /sim/gantry_arrived -> 视觉识别。
 * HANDLE(slot, type)：吸盘下探吸附（attach material_k）-> 提升 -> 平移到
@@ -45,6 +45,7 @@ import subprocess
 import time
 
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import JointState
@@ -291,12 +292,12 @@ class GantryController(Node):
             self.get_logger().warn("[sim/control] 未知 action='%s'，忽略" % msg.action)
 
     def _goto_steps(self, slot, rnd):
-        """M3：GOTO = 去置物台上方（到位后触发视觉识别置物台上的物料）。
+        """M4：GOTO = 去置物台上方（到位后触发视觉识别置物台上的物料）。
 
-        供料按 slot_id：第 slot 号 GOTO 把 material_slot 从供料管传送到置物台
-        （按名传送，管内堆叠顺序与取料顺序无关；从中间抽走一块，上面的落下
-        6 mm，被管壁约束，无碍）。上一轮若识别失败（物料还留在置物台），
-        先把它传送到回收位，保证「台面同时只有一块」。
+        供料按 slot_id：第 slot 号 GOTO 把 material_slot 从**来料架**它自己的
+        格位传送到置物台（来料架 3 行 x 4 列，格位与物料编号一一对应）。
+        上一轮若识别失败（物料还留在置物台），先把它传送到回收位，
+        保证「台面同时只有一块」。
         """
         sx, sy, _sz = self._staging_xy
         steps = []
@@ -551,7 +552,7 @@ class GantryController(Node):
     def _set_pose(self, model, x, y, z):
         """用 ign service 把模型传送到指定位姿（上料 / 回收）。
 
-        为什么不用动态 create 实体：见 sim_layout.yaml magazine 段注释 ——
+        为什么不用动态 create 实体：见 sim_layout.yaml infeed 段的注释 ——
         DetachableJoint 在世界加载时解析 child_model，后创建的实体绑不上。
 
         三个必踩的坑（都是实测）：
@@ -643,6 +644,10 @@ def main():
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
+        pass
+    except ExternalShutdownException:
+        # 关停时 spin 抛这个（继承 RuntimeError，但 rclpy.ok() 仍为真）——
+        # 不接住就会 exit 1，launch 报 process has died，录像/自验时看着像真故障。
         pass
     finally:
         node.destroy_node()

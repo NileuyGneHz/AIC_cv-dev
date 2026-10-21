@@ -6,7 +6,7 @@
 
 M3 与 M2 的区别（对齐官方 VirtualNext 平台，参考资料 docs/vnext_pdf/manual.txt）：
     场景 = 底板 + 立柱式龙门 + 放置货架（4 类型列 x 3 层，每格一块）
-           + 置物台（取料源）+ 供料管（12 块物料开机全叠在管里）。
+           + 置物台（取料源）+ 来料架（3 行 x 4 列，12 块物料开局铺在格位上）。
     物料不再烘在取料库位，而是运行时由 gantry_controller 逐块 set_pose 传送到
     置物台 —— 但 12 块物料仍必须在世界 SDF 里就存在：DetachableJoint 插件
     （挂龙门、child_model=material_NN）在世界加载时解析 child，动态 create
@@ -46,7 +46,7 @@ HEADER = """<?xml version="1.0" ?>
 <!--
   自动生成，勿手改：由 scripts/gen_world.py 从 config/sim_layout.yaml 生成。
   AIC 视觉逻辑算法应用赛 · M3 官方平台对齐版（Ignition Fortress）：
-  底板 + 放置货架（4 类型列 x 3 层）+ 置物台 + 供料管 + 立柱式三轴龙门（吸盘）
+  底板 + 分拣货架（4 类型列 x 3 层）+ 置物台 + 来料架（3 行 x 4 列）+ 立柱式三轴龙门（吸盘）
 -->
 <sdf version="1.6">
   <world name="aic_warehouse">
@@ -85,7 +85,7 @@ HEADER = """<?xml version="1.0" ?>
          坑：不加载它时这两个服务压根不存在（`ign service -l` 只有 26 条，
          没有 set_pose），但客户端不会立刻报「无此服务」，而是等满 timeout
          后报 "Service call timed out" —— 极易误判成"动态模型不能 set_pose"。
-         本项目的用途：M3 上料（把 material_NN 从供料管传送到置物台）
+         本项目的用途：M4 上料（把 material_NN 从来料架格位传送到置物台）
          与看板自由摄像机机位切换。 -->
     <plugin filename="ignition-gazebo-user-commands-system"
             name="ignition::gazebo::systems::UserCommands"/>
@@ -158,6 +158,21 @@ def slot_centers(layout):
     return out
 
 
+def infeed_slot(layout, idx):
+    """来料架第 idx 块（1 起）的格位 (x, y, 托盘面 z)。
+
+    row-major：第 1 行 4 块（1..4），第 2 行（5..8），第 3 行（9..12）。
+    物料编号与格位一一对应，types[idx-1] 就是这一格的缺陷类型。
+    """
+    inf = layout["infeed"]
+    cols = int(inf["cols"])
+    row, col = divmod(int(idx) - 1, cols)
+    px, py = float(inf["pitch_x"]), float(inf["pitch_y"])
+    x = (col + 1 - (cols + 1) / 2.0) * px
+    y = float(inf["y0"]) + row * py
+    return x, y, float(inf["z"])
+
+
 def material_types(layout, count):
     types = layout.get("materials", {}).get("types")
     if not types:
@@ -174,16 +189,16 @@ def material_types(layout, count):
 def base_plate_model(layout):
     """整机底板（官方效果图里的青色 PHOENIX CONTACT 台面的中性版）。
 
-    立柱式龙门、货架、置物台、供料管全部「站」在这块板上。
+    立柱式龙门、分拣货架、置物台、来料架全部「站」在这块板上。
     """
     out = [
-        '    <!-- 整机底板（1.40 x 0.90 m，上表面 z=0.02） -->\n',
+        '    <!-- 整机底板（1.40 x 1.10 m，上表面 z=0.02；-Y 侧加深 0.20 m 用来放 3x4 来料架） -->\n',
         '    <model name="base_plate">\n',
         "      <static>true</static>\n",
         '      <link name="plate">\n',
         '        <visual name="plate">\n',
         "          <pose>0 0 0.01 0 0 0</pose>\n",
-        "          <geometry><box><size>1.40 0.90 0.02</size></box></geometry>\n",
+        "          <geometry><box><size>1.40 1.10 0.02</size></box></geometry>\n",
         "          <material>\n"
         "            <ambient>0.10 0.42 0.46 1</ambient>\n"
         "            <diffuse>0.13 0.52 0.58 1</diffuse>\n"
@@ -191,7 +206,7 @@ def base_plate_model(layout):
         "        </visual>\n",
         '        <collision name="plate_col">\n',
         "          <pose>0 0 0.01 0 0 0</pose>\n",
-        "          <geometry><box><size>1.40 0.90 0.02</size></box></geometry>\n",
+        "          <geometry><box><size>1.40 1.10 0.02</size></box></geometry>\n",
         "        </collision>\n",
         "      </link>\n",
         "    </model>\n\n",
@@ -279,8 +294,8 @@ def rack_shelf_model(layout):
             '        <visual name="tray_{id}">\n'
             "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
             "          <geometry><box><size>{t} {t} 0.004</size></box></geometry>\n"
-            "          <material><ambient>0.58 0.60 0.63 1</ambient>"
-            "<diffuse>0.68 0.70 0.73 1</diffuse></material>\n"
+            "          <material><ambient>0.24 0.26 0.29 1</ambient>"
+            "<diffuse>0.30 0.32 0.35 1</diffuse></material>\n"
             "        </visual>\n".format(id=s["id"], x=s["x"], y=ly, z=lz - 0.002, t=tile))
         for name, dx, dy, sx_, sy_ in (
                 ("rim_xa", 0.0, -(tile / 2.0 + 0.003), tile + 0.012, 0.006),
@@ -347,58 +362,58 @@ def staging_table_model(layout):
     return "".join(out)
 
 
-def magazine_model(layout):
-    """供料管：12 块物料开机时全部叠在管内，运行时逐块传送到置物台。
+def infeed_shelf_model(layout):
+    """来料架：3 行 x 4 列平面料位，12 块物料开局铺在这里（类型乱序）。
 
-    为什么不用 ign service 动态 create 实体：DetachableJoint 插件（挂龙门）
-    在世界加载时就解析 child_model 并建约束；后创建的实体绑不上（M2 实测
-    child 找不到时插件直接失效）。所以物料常驻世界，只是「藏在管里」。
+    每格是一个实心托盘（有 collision，物料落在它上面）+ 一圈深色围边，
+    俯视时能清楚数出 12 个格口。位置在 -Y 侧、龙门行程之外（龙门用 set_pose
+    取料，不需要走过去），所以不会与运动轨迹干涉。
     """
-    mg = layout["magazine"]
-    x, y = float(mg["x"]), float(mg["y"])
-    fz = float(mg["floor_z"])
-    th = float(mg["tube_h"])
+    inf = layout["infeed"]
+    cols, rows = int(inf["cols"]), int(inf["rows"])
+    z = float(inf["z"])
+    tile = float(inf["tile"])
+    rim_h = float(inf["rim_height"])
+    pedestal_h = z - 0.02          # 从底板上表面（z=0.02）长到托盘面
+
     out = [
-        '    <!-- 供料管（12 块物料待命位，管底 z={:.3f}） -->\n'.format(fz),
-        '    <model name="magazine">\n',
+        '    <!-- 来料架：{} 行 x {} 列，12 块物料开局铺在这里 -->\n'.format(rows, cols),
+        '    <model name="infeed_rack">\n',
         "      <static>true</static>\n",
-        '      <link name="tube">\n',
+        '      <link name="frame">\n',
     ]
-    # 底座 + 管底（collision：物料叠在它上面）
-    out.append(
-        '        <visual name="pedestal">\n'
-        "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
-        "          <geometry><box><size>0.12 0.12 0.065</size></box></geometry>\n"
-        "          <material><ambient>0.30 0.31 0.33 1</ambient>"
-        "<diffuse>0.36 0.37 0.39 1</diffuse></material>\n"
-        "        </visual>\n".format(x=x, y=y, z=0.02 + 0.065 / 2.0))
-    out.append(
-        '        <collision name="floor_col">\n'
-        "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
-        "          <geometry><box><size>0.11 0.11 0.01</size></box></geometry>\n"
-        "        </collision>\n"
-        '        <visual name="floor">\n'
-        "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
-        "          <geometry><box><size>0.11 0.11 0.01</size></box></geometry>\n"
-        "          <material><ambient>0.40 0.42 0.44 1</ambient>"
-        "<diffuse>0.48 0.50 0.52 1</diffuse></material>\n"
-        "        </visual>\n".format(x=x, y=y, z=fz - 0.005))
-    # 四面管壁（内空 0.088，盘径 0.08，单边 4 mm 余量）
-    wall_t, inner = 0.012, 0.088
-    half = inner / 2.0 + wall_t / 2.0
-    for name, dx, dy, sx, sy in (
-            ("wall_n", 0.0, +half, inner + 2 * wall_t, wall_t),
-            ("wall_s", 0.0, -half, inner + 2 * wall_t, wall_t),
-            ("wall_e", +half, 0.0, wall_t, inner + 2 * wall_t),
-            ("wall_w", -half, 0.0, wall_t, inner + 2 * wall_t)):
+    for idx in range(1, cols * rows + 1):
+        x, y, _z = infeed_slot(layout, idx)
         out.append(
-            '        <visual name="{n}">\n'
+            '        <visual name="tile_{i:02d}">\n'
             "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
-            "          <geometry><box><size>{sx} {sy} {h}</size></box></geometry>\n"
-            "          <material><ambient>0.45 0.47 0.50 1</ambient>"
-            "<diffuse>0.55 0.57 0.60 1</diffuse></material>\n"
+            "          <geometry><box><size>{t} {t} {h}</size></box></geometry>\n"
+            "          <material><ambient>0.46 0.48 0.50 1</ambient>"
+            "<diffuse>0.56 0.58 0.60 1</diffuse></material>\n"
             "        </visual>\n".format(
-                n=name, x=x + dx, y=y + dy, z=fz + th / 2.0, sx=sx, sy=sy, h=th))
+                i=idx, x=x, y=y, z=0.02 + pedestal_h / 2.0, t=tile, h=pedestal_h))
+        out.append(
+            '        <collision name="tile_col_{i:02d}">\n'
+            "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
+            "          <geometry><box><size>{t} {t} {h}</size></box></geometry>\n"
+            "        </collision>\n".format(
+                i=idx, x=x, y=y, z=0.02 + pedestal_h / 2.0, t=tile, h=pedestal_h))
+        # 四面围边（深色，俯视时勾出格口）
+        half = tile / 2.0 - 0.006
+        for nm, dx, dy, sx, sy in (
+                ("n", 0.0, +half, tile, 0.012),
+                ("s", 0.0, -half, tile, 0.012),
+                ("e", +half, 0.0, 0.012, tile),
+                ("w", -half, 0.0, 0.012, tile)):
+            out.append(
+                '        <visual name="rim_{i:02d}_{n}">\n'
+                "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
+                "          <geometry><box><size>{sx} {sy} {h}</size></box></geometry>\n"
+                "          <material><ambient>0.16 0.17 0.19 1</ambient>"
+                "<diffuse>0.20 0.21 0.23 1</diffuse></material>\n"
+                "        </visual>\n".format(
+                    i=idx, n=nm, x=x + dx, y=y + dy, z=z + rim_h / 2.0,
+                    sx=sx, sy=sy, h=rim_h))
     out.append("      </link>\n    </model>\n\n")
     return "".join(out)
 
@@ -601,21 +616,18 @@ def defect_visual(mtype, r, d, rng):
 
 
 def plate_model(layout, slot, mtype, jitter_seed=None):
-    """一块圆形物料 + 该类缺陷的几何表达（M3：开机时叠在供料管里待命）。
+    """一块圆形物料 + 该类缺陷的几何表达（M4：开局铺在来料架的格位上）。
 
     动态模型（有质量/碰撞/摩擦）：运行时被 set_pose 传送到置物台，
-    HANDLE 时由 DetachableJoint 吸附到 z_carriage（吸盘），放入货架格后松开。
-    叠放顺序：material_01 在最上面（先被取走），往下依次 02..12。
+    HANDLE 时由 DetachableJoint 吸附到 z_carriage（吸盘），放进货架格后松开。
+    物料编号 = 来料架格位号（row-major），types[idx-1] 即该格类型。
     """
     plate = layout["plate"]
-    mg = layout["magazine"]
     r = float(plate["diameter"]) / 2.0
     th = float(plate["thickness"])
-    # 管内叠放：01 在顶。留 0.5 mm 间隙避免出生互相穿透；重力会让它们自然落实
-    spacing = th + 0.0005
     idx = int(slot["id"])
-    cz = (float(mg["floor_z"]) + th / 2.0 + 0.002
-          + (12 - idx) * spacing)
+    cx, cy, deck_z = infeed_slot(layout, idx)
+    cz = deck_z + th / 2.0 + 0.001   # 托盘面上留 1 mm，重力自然落稳
     name = "material_{:02d}".format(idx)
     d = th / 2.0  # 盘顶面在 link 内的 z
     mass = float(plate.get("mass", 0.05))
@@ -625,8 +637,7 @@ def plate_model(layout, slot, mtype, jitter_seed=None):
     out = [
         '    <model name="{}">\n'.format(name),
         "      <static>false</static>\n",
-        "      <pose>{:.4f} {:.4f} {:.4f} 0 0 0</pose>\n".format(
-            float(mg["x"]), float(mg["y"]), cz),
+        "      <pose>{:.4f} {:.4f} {:.4f} 0 0 0</pose>\n".format(cx, cy, cz),
         '      <link name="disc">\n',
         '        <inertial>\n',
         "          <mass>{}</mass>\n".format(mass),
@@ -709,9 +720,9 @@ def build_sdf(layout, seed=None):
     types = material_types(layout, len(slots))
 
     out = [HEADER, base_plate_model(layout), rack_shelf_model(layout),
-           staging_table_model(layout), magazine_model(layout),
+           staging_table_model(layout), infeed_shelf_model(layout),
            recycle_marker(layout), ee_cam_model(layout), scene_cam(layout)]
-    out.append("    <!-- ===== 12 块圆形物料（开机叠在供料管里，运行时逐块上料；"
+    out.append("    <!-- ===== 12 块圆形物料（开局铺在来料架 3x4 格位上，运行时逐块上料；"
                "类型 = materials.types[序号-1]）===== -->\n")
     for s, t in zip(slots, types):
         out.append(plate_model(layout, s, t, seed))

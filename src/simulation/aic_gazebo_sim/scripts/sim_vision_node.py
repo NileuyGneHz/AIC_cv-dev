@@ -4,8 +4,8 @@
 契约：docs/guides/decision_vision_interface.md —— 每次 GOTO 后最多一条
       std_msgs/String，取值 "1".."4"；失败场景「不发」即可，不发特殊值。
 
-M3 真值口径：第 k 个 GOTO 上料的是 material_k（按 slot_id 供料，供料管按名
-取料），其类型 = materials.types[slot_id-1] —— 与 M2 相同的「slot -> 类型」
+M3/M4 真值口径：第 k 个 GOTO 上料的是 material_k（按 slot_id 供料，从来料架
+按名取料），其类型 = materials.types[slot_id-1] —— 与 M2 相同的「slot -> 类型」
 映射，真值映射不变，只是物料是动态上料的。
 
 触发方式：订阅 /sim/gantry_arrived（std_msgs/UInt8 = slot_id），

@@ -30,7 +30,7 @@ class SimLayout:
         self.plate = doc["plate"]
         self.gantry = doc.get("gantry", {})
         self.staging = doc.get("staging", {})
-        self.magazine = doc.get("magazine", {})
+        self.infeed = doc.get("infeed", {})
         self.recycle = doc.get("recycle", {})
         self.types = [int(t) for t in doc.get("materials", {}).get("types", [])]
 
@@ -52,10 +52,18 @@ class SimLayout:
         return (float(self.staging["x"]), float(self.staging["y"]),
                 float(self.staging["z"]))
 
-    def magazine_pose(self):
-        """供料管 (x, y, 管底 z)。"""
-        return (float(self.magazine["x"]), float(self.magazine["y"]),
-                float(self.magazine["floor_z"]))
+    def infeed_slot(self, idx):
+        """来料架第 idx 块（1 起）的格位 (x, y, 托盘面 z)；row-major。
+
+        与 gen_world.infeed_slot 同一公式（世界生成与运行时取料必须一致）。
+        """
+        cols = int(self.infeed.get("cols", 4))
+        row, col = divmod(int(idx) - 1, cols)
+        px = float(self.infeed.get("pitch_x", 0.25))
+        py = float(self.infeed.get("pitch_y", 0.09))
+        x = (col + 1 - (cols + 1) / 2.0) * px
+        y = float(self.infeed.get("y0", -0.44)) + row * py
+        return x, y, float(self.infeed.get("z", 0.10))
 
     def recycle_xyz(self):
         """回收位 (x, y, z)。"""
