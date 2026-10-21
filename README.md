@@ -83,6 +83,7 @@ logs/                                 所有运行产物（不入 git）
 | 看判分与画面 | `ros2 launch aic_dashboard dashboard.launch.py vision_backend:=trad` |
 | 单独验 PLC 接管 | `bash scripts/test_plc_one.sh` / `_full.sh` |
 | 验 RSC 后端（无 vPLC） | `bash scripts/test_plc_rsc.sh` |
+| 调窗口 / 看画面 | `docs/guides/visual_walkthrough.md` |
 | 录省赛视频 | `docs/guides/obs_recording_playbook.md` |
 
 参数在 `src/decision/aic_behavior_tree/config/aic_decision_params.yaml` 与

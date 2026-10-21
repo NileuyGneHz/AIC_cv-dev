@@ -256,6 +256,7 @@ ros2 launch aic_dashboard dashboard.launch.py vision_backend:=trad
 | 分拣架逐格填满 | 四列各三层，颜色按类型聚在一起 | 类型判错或层位抢用 |
 | 12 个判分格变绿 | 每格显示类型与耗时，无红 | 看 `TIMEOUT` 还是 `WRONG` |
 
+窗口怎么开、按钮怎么用、画面不出来的排查，见 `visual_walkthrough.md`；
 录制一镜到底的流程在 `obs_recording_playbook.md`，这里不重复。
 
 ---

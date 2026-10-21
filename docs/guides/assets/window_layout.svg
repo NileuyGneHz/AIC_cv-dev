@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="560" viewBox="0 0 900 560" font-family="system-ui, 'Noto Sans CJK SC', 'PingFang SC', sans-serif">
+  <rect width="900" height="560" fill="#0f172a"/>
+  <text x="24" y="34" fill="#e2e8f0" font-size="19" font-weight="600">三个窗口怎么摆（布局示意，非截图）</text>
+  <text x="24" y="54" fill="#94a3b8" font-size="12">推荐：左边 Gazebo 看立体动作，右边浏览器看判分与相机流，终端只用来起停</text>
+
+  <!-- ① Gazebo -->
+  <rect x="24" y="72" width="536" height="356" rx="8" fill="#111c2e" stroke="#334155"/>
+  <text x="40" y="96" fill="#38bdf8" font-size="14" font-weight="600">① Gazebo GUI</text>
+  <text x="150" y="96" fill="#94a3b8" font-size="11">ros2 launch ... gui:=true　｜　左键旋转 · 中键平移 · 滚轮缩放</text>
+
+  <!-- 场景示意：底板 -->
+  <rect x="70" y="118" width="444" height="270" rx="6" fill="#182338" stroke="#475569"/>
+  <!-- 来料架 3x4 -->
+  <g>
+    <rect x="96" y="150" width="150" height="96" rx="3" fill="#1f2a3d" stroke="#64748b"/>
+    <text x="171" y="143" fill="#94a3b8" font-size="10" text-anchor="middle">来料架 3×4</text>
+    <g fill="#475569">
+      <circle cx="118" cy="168" r="7"/><circle cx="155" cy="168" r="7"/><circle cx="192" cy="168" r="7"/><circle cx="229" cy="168" r="7"/>
+      <circle cx="118" cy="198" r="7"/><circle cx="155" cy="198" r="7"/><circle cx="192" cy="198" r="7"/><circle cx="229" cy="198" r="7"/>
+      <circle cx="118" cy="228" r="7"/><circle cx="155" cy="228" r="7"/><circle cx="192" cy="228" r="7"/><circle cx="229" cy="228" r="7"/>
+    </g>
+  </g>
+  <!-- 置物台 -->
+  <rect x="272" y="196" width="58" height="46" rx="3" fill="#123528" stroke="#34d399"/>
+  <text x="301" y="258" fill="#34d399" font-size="10" text-anchor="middle">置物台</text>
+  <circle cx="301" cy="218" r="7" fill="#fbbf24"/>
+  <!-- 分拣货架 4x3 -->
+  <g>
+    <rect x="356" y="150" width="136" height="112" rx="3" fill="#1f2a3d" stroke="#64748b"/>
+    <text x="424" y="143" fill="#94a3b8" font-size="10" text-anchor="middle">分拣货架 4 列 × 3 层</text>
+    <g fill="none" stroke="#475569">
+      <rect x="366" y="160" width="26" height="26"/><rect x="398" y="160" width="26" height="26"/>
+      <rect x="430" y="160" width="26" height="26"/><rect x="462" y="160" width="26" height="26"/>
+      <rect x="366" y="192" width="26" height="26"/><rect x="398" y="192" width="26" height="26"/>
+      <rect x="430" y="192" width="26" height="26"/><rect x="462" y="192" width="26" height="26"/>
+      <rect x="366" y="224" width="26" height="26"/><rect x="398" y="224" width="26" height="26"/>
+      <rect x="430" y="224" width="26" height="26"/><rect x="462" y="224" width="26" height="26"/>
+    </g>
+    <g fill="#38bdf8"><circle cx="379" cy="173" r="5"/><circle cx="411" cy="173" r="5"/></g>
+    <g fill="#fb923c"><circle cx="443" cy="173" r="5"/><circle cx="475" cy="173" r="5"/></g>
+  </g>
+  <!-- 龙门示意 -->
+  <g stroke="#64748b" fill="none">
+    <path d="M84 330 L84 128 M512 330 L512 128 M84 128 L512 128" stroke-width="2"/>
+    <circle cx="301" cy="128" r="5" fill="#e2e8f0" stroke="none"/>
+  </g>
+  <text x="298" y="352" fill="#64748b" font-size="9" text-anchor="middle">三轴龙门 + 吸盘（画面里会随动作移动）</text>
+
+  <!-- ② 浏览器 -->
+  <rect x="580" y="72" width="296" height="212" rx="8" fill="#111c2e" stroke="#334155"/>
+  <text x="596" y="96" fill="#38bdf8" font-size="14" font-weight="600">② 浏览器看板</text>
+  <text x="700" y="96" fill="#94a3b8" font-size="11">127.0.0.1:8080</text>
+  <!-- 三列示意 -->
+  <rect x="596" y="110" width="128" height="74" rx="3" fill="#182338" stroke="#475569"/>
+  <text x="660" y="151" fill="#94a3b8" font-size="10" text-anchor="middle">全景 · 自由机位</text>
+  <rect x="732" y="110" width="60" height="46" rx="3" fill="#182338" stroke="#475569"/>
+  <text x="762" y="137" fill="#94a3b8" font-size="9" text-anchor="middle">末端相机</text>
+  <g fill="#1f2a3d" stroke="#475569">
+    <rect x="732" y="162" width="14" height="10"/><rect x="748" y="162" width="14" height="10"/><rect x="764" y="162" width="14" height="10"/><rect x="780" y="162" width="14" height="10"/>
+    <rect x="732" y="174" width="14" height="10"/><rect x="748" y="174" width="14" height="10"/><rect x="764" y="174" width="14" height="10"/><rect x="780" y="174" width="14" height="10"/>
+  </g>
+  <rect x="800" y="110" width="60" height="74" rx="3" fill="#182338" stroke="#475569"/>
+  <text x="830" y="151" fill="#94a3b8" font-size="9" text-anchor="middle">态势图</text>
+  <text x="596" y="204" fill="#94a3b8" font-size="10">机位按钮：全景俯视 / 正俯视 / 货架特写 / 码放特写 / 前后左右升降</text>
+  <text x="596" y="222" fill="#94a3b8" font-size="10">判分格：12 个位点，绿=正确，红=错误，琥珀=识别中</text>
+  <text x="596" y="240" fill="#94a3b8" font-size="10">底部滚动事件日志（含「本轮完成：正确 12 / 12」）</text>
+  <text x="596" y="264" fill="#64748b" font-size="9">整页就是一个窗口，OBS 采它即可满足单窗口录制</text>
+
+  <!-- ③ 终端 -->
+  <rect x="580" y="300" width="296" height="128" rx="8" fill="#111c2e" stroke="#334155"/>
+  <text x="596" y="324" fill="#38bdf8" font-size="14" font-weight="600">③ 终端</text>
+  <text x="656" y="324" fill="#94a3b8" font-size="11">起停与自验</text>
+  <g font-size="10" font-family="ui-monospace, Menlo, monospace">
+    <text x="596" y="346" fill="#4ade80">$ ros2 launch aic_dashboard dashboard.launch.py \</text>
+    <text x="606" y="362" fill="#4ade80">    vision_backend:=trad gui:=true</text>
+    <text x="596" y="384" fill="#94a3b8">[dashboard] http://127.0.0.1:8080</text>
+    <text x="596" y="400" fill="#94a3b8">[sim/control] 轮次 3 到位置物台上方…</text>
+    <text x="596" y="416" fill="#f87171">Ctrl-C 停；先看这一屏，再看窗口</text>
+  </g>
+
+  <text x="24" y="466" fill="#64748b" font-size="11">说明：本图只表达「放哪、看什么」，不是界面截图。Gazebo 窗口的真实画面随视角变化；</text>
+  <text x="24" y="484" fill="#64748b" font-size="11">与窗口同一渲染管线的抓帧见 assets/storyboard.png（一轮 12 帧，scene_cam 正俯视）。</text>
+  <text x="24" y="510" fill="#94a3b8" font-size="11">验收顺序：终端无 traceback → 看板 12 格变绿 → Gazebo 里 12 块料按类型入架。</text>
+  <text x="24" y="532" fill="#64748b" font-size="10">无图形会话（SSH / 容器 / 沙箱）时 gui:=true 会起不来：改用看板的两个 MJPEG 流看画面。</text>
+</svg>

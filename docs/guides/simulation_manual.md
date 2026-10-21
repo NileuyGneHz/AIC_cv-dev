@@ -281,6 +281,8 @@ ros2 run aic_gazebo_sim capture_storyboard.py \
 
 ### 12.1 判分看板（aic_dashboard）
 
+> 窗口布局、按钮与“画面不出来”的排查见 `visual_walkthrough.md`。
+
 对标官方平台「放置正确变绿 / 错误变红、自动计分」的过审硬指标 3、4：
 
 ```bash
