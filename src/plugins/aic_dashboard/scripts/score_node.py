@@ -461,7 +461,7 @@ def build_page():
   <div class="col" style="flex:1">
     <div class="panel" style="padding:8px"><svg id="map" viewBox="0 0 372 300" width="100%"></svg></div>
     <div style="font-size:12px;color:#64748b;padding:0 4px">
-      态势图：圆点=物料（颜色=缺陷类型，暗=待上料），十字=龙门，绿框=置物台，灰框=供料管</div>
+      态势图：圆点=物料（颜色=缺陷类型，暗=待上料），十字=龙门，绿框=置物台，灰框=来料架 3x4，右侧四列=分拣货架</div>
   </div>
 </main>
 <script>
