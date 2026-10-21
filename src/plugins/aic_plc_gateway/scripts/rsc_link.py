@@ -366,12 +366,17 @@ class RscLink:
             self._device = None
 
     # ---- 读 ----
-    def read_all(self) -> Dict[str, Any]:
-        """读所有 PLC→网关 的标签，返回 {标签: python 值}。单个变量不存在不致命。"""
+    def read_all(self, include_writes: bool = False) -> Dict[str, Any]:
+        """读 PLC→网关 的标签，返回 {标签: python 值}。单个变量不存在不致命。
+
+        include_writes=True 时把 gw2plc 标签也读上来。网关状态机不用它（只需输入），
+        但手工调试要能「写下去再读回来」，否则 --write X=1 --read X 永远是 None。
+        """
         if self._svc is None:
             raise RuntimeError("RSC 未连接")
-        reads = [t for t in self.map.tags.values() if t.direction in (DIR_PLC2GW, DIR_BOTH)]
-        structs = [s for s in self.map.structs if s.direction in (DIR_PLC2GW, DIR_BOTH)]
+        dirs = (DIR_PLC2GW, DIR_BOTH) + ((DIR_GW2PLC,) if include_writes else ())
+        reads = [t for t in self.map.tags.values() if t.direction in dirs]
+        structs = [s for s in self.map.structs if s.direction in dirs]
         if not reads and not structs:
             return {}
 
@@ -396,7 +401,7 @@ class RscLink:
                 self._warn_once(st.udt, "UDT 解码失败（PLC 侧类型与 YAML schema 是否一致？）：%s" % e)
                 continue
             for f_name, tag in st.fields.items():
-                if self.map.tags[tag].direction not in (DIR_PLC2GW, DIR_BOTH):
+                if self.map.tags[tag].direction not in dirs:
                     continue
                 try:
                     raw = getattr(obj, f_name)
@@ -627,7 +632,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             print("写 %s = %r" % (name.strip(), v))
 
         for _ in range(2 if args.watch else 1):
-            vals = link.read_all()
+            vals = link.read_all(include_writes=bool(args.read))
             if args.read:
                 for name in args.read:
                     print("  %-12s = %r" % (name, vals.get(name)))
