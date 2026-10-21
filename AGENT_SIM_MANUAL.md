@@ -197,7 +197,11 @@ if v:
 | `aic_gazebo_sim` | `src/simulation/aic_gazebo_sim` | Python/XML | 世界生成、龙门控制器、抓帧 | 可用 |
 | `aic_plc_gateway` | `src/plugins/aic_plc_gateway` | Python | PLC 网关（Modbus / RSC 双后端） | 两种后端均可用；RSC 仅干跑验证，**未接真 vPLC** |
 | `aic_dashboard` | `src/plugins/aic_dashboard` | Python | 判分看板 + 自由机位 | 可用 |
-| `aic_io_bridge` / `aic_motion` / `aic_vision_core` / `aic_vision_dl` / `aic_sim_devices` | `src/**` | — | 规划中的占位目录 | **只有 `.gitkeep`，别以为有实现** |
+
+> 2026-10-22：上表就是**全部**包（7 个，每个都有 `package.xml` 且能 `colcon build`）。
+> 原先列在这里的 5 个占位目录已删除——只有 `.gitkeep` 的目录不能被构建，却容易让人
+> 以为已有实现。后续规划（`aic_motion` / `aic_io_bridge` / `aic_vision_core` /
+> `aic_vision_dl` / `aic_bringup`）连同「何时该建」写在 `AGENTS.md` §5，不再建空目录。
 
 ### 2.2 数据流（当前唯一跑通的链路）
 
@@ -249,6 +253,7 @@ gantry_controller.py ──► /aic/joint/{x,y,z}/cmd_pos ──► ros_gz_bridg
 | `src/plugins/aic_plc_gateway/scripts/plc_gateway.py` | 900+ | 状态机 + Modbus/RSC 双后端 |
 | `src/plugins/aic_plc_gateway/scripts/rsc_link.py` | 660 | RSC 标签表层（被 `RscBackend` 引用） |
 | `src/plugins/aic_plc_gateway/config/plc_rsc_map.yaml` | 83 | 26 个标签 → PLC 变量路径 |
+| `docs/guides/visual_walkthrough.md` | — | 窗口手册：Gazebo / 看板 / 终端怎么开、该看到什么 |
 | `docs/plc/main.st` | 198 | PLC 侧巡视状态机 + 看门狗（骨架，字段名与 YAML 对齐） |
 | `docs/adr/0002-plc-contract.md` | — | PLC 数据契约选型：默认 5 字段，官方两代作现场分支 |
 
