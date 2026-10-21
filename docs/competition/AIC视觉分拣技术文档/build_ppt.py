@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
 """生成《圆形铁片四缺陷识别与分拣》技术文档 PPT（16:9，13 页，学术答辩风）。
 
-用法：
-    PYTHONPATH=/home/nileuy/AIC_cv-dev/.pptx_deps \
-      TMPDIR=/home/nileuy/AIC_cv-dev/.pip_tmp \
-      /home/nileuy/.workbuddy/binaries/python/versions/3.13.12/bin/python3 build_ppt.py
+用法（系统 python3 即可；缺失时脚本自己把 .pptx_deps 追加到 sys.path）：
+    /usr/bin/python3 build_ppt.py
 
 设计口径（与 STORY.md 一致）：
   - 主色 宝蓝 #1E4FA8 / 藏蓝 #0E3F8C / 浅蓝 #E8EFF8；强调 橙 #E8A33D；
@@ -14,6 +12,16 @@
 所有数字都来自实测（见 docs/guides/simulation_guide.md 与 competition 文档）。
 """
 import os
+import sys
+
+# .pptx_deps 里只有 python-pptx 是系统没有的；它自带的 lxml 缺 .so。
+# 把依赖目录「追加」到 sys.path 末尾：pptx 从这里取，lxml/PIL/matplotlib 用系统的。
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                     "..", "..", ".."))
+try:
+    import pptx  # noqa: F401
+except ImportError:
+    sys.path.append(os.path.join(_ROOT, ".pptx_deps"))
 
 from pptx import Presentation
 from pptx.dml.color import RGBColor
@@ -292,7 +300,7 @@ def build():
         ["放置位四列对应四类缺陷，每列三个位置", "货架 4 列 × 3 层，按类型列的最低空层放入，每格一块",
          "12 块全部落对应列，L1→L3 逐层填满"],
         ["每个库位有且只有一个物料（不堆叠）", "控制器维护每列已用层数，放满即拒绝并报错", "落位断言：每格唯一，z 与层高一致"],
-        ["三轴行程 X/Y/Z = 300/300/200 mm", "x ±0.45 m、y −0.24…+0.32 m、z −0.20…0 m", "行程覆盖供料管、置物台、最远层"],
+        ["三轴行程 X/Y/Z = 300/300/200 mm", "x ±0.45 m、y −0.24…+0.32 m、z −0.20…0 m", "行程覆盖来料架、置物台、最远层"],
         ["吸盘吸取（SuctionEnable）", "吸盘几何 + DetachableJoint 吸附/断气", "吸附与释放成对，物料随龙门移动"],
         ["自动运行、正确变绿 / 错误变红、自动计分", "行为树自动 12 轮；看板按类型列判分，绿 / 红 / 琥珀实时显示",
          "单轮约 145 s 无人干预；看板 12 绿"],
@@ -309,7 +317,7 @@ def build():
     picture_fit(s, os.path.join(ASSETS, "scene_map.png"), MARGIN, 1.55, 7.35, 5.15)
     x = MARGIN + 7.65
     bullets(s, x, 1.62, 4.35, [
-        ("上料位", "置物台 (0.30, −0.15)；12 块物料开机全部叠放在供料管内，按轮次传送"),
+        ("上料位", "来料架 3×4 开局铺满 12 块；每轮 set_pose 传送到置物台 (0.30, −0.15) 识别"),
         ("放置货架", "4 列 = 四类缺陷；每列 3 层，层位沿 +Y 阶梯错开 0.11 m，避免吸盘升降撞上层托盘"),
         ("识别相机", "固定在置物台正上方，先拍照后下探，吸盘不遮挡光路"),
         ("坐标口径", "+X 向右（列 1→4），+Y 向远，+Z 向上；与 MaterialTask.frame_id 一致"),
@@ -416,7 +424,7 @@ def build():
         ("视觉超时兜底", "决策对 GOTO/HANDLE 都递增 visit_index，不能用编号推相邻位点。"
                      "改为语义推断：新 GOTO 到达时，仍停在「识别中」的位点记 TIMEOUT。"),
         ("迟到结果防护", "识别结果晚到会被下一位点误收（类型错位但结果表仍显示 OK）。"
-                     "窗口按最坏队列时延设定：M3 实测 GOTO→结果 15.5 s，现取 30 s。"),
+                     "窗口按最坏队列时延设定：M4 实测 GOTO→结果 15.5 s，现取 30 s。"),
     ]
     for i, (head, body) in enumerate(guards):
         x = MARGIN + i * (CONTENT_W / 2 + 0.10)
@@ -477,7 +485,7 @@ def build():
     bullets(s, x, 1.66, 6.95, [
         ("全景 · 自由摄像机", "世界内独立相机，看板可切 4 个预设机位并六向平移，抓取全程可见"),
         ("末端相机画中画", "识别原图 + 当前位点 / 判型 / 实时比分"),
-        ("俯视态势图", "物料从供料管 → 置物台 → 吸盘（跟随龙门）→ 货架层位，全程位置可见"),
+        ("俯视态势图", "物料从来料架 → 置物台 → 吸盘（跟随龙门）→ 货架层位，全程位置可见"),
         ("实时判分", "按「放置列 == 物料类型」判绿 / 红；超时单独计数；纯旁路，不干扰主链路"),
     ], size=10.5, gap=0.62)
     rect(s, x, 4.42, 6.95, 1.70, fill=LIGHT)
