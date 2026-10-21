@@ -299,6 +299,7 @@ grep "汇总" logs/acc_plc.log           # L5 的最终计数
 | 网关连上、心跳在跳、龙门一动不动 | 仿真卡了 | 主站把 `POS_SET(10)` 和 `TASK_CMD(5)` 当相邻寄存器一次写 | `grep "PLC ->" logs/plc_*_gw.log`——没有这行就是没触发 |
 | `TASK_STATE=5` 但货架没变化 | 抓取机构问题 | `HANDLE` 没带 `material_type`，走「未识别」分支 | 看单轮耗时是不是 0.3 s |
 | 某一轮突然 30 s+，日志有 `到位超时 8.0 s` | 机器慢、代码回归 | **有第二个 Gazebo 实例在跑**，两个物理世界抢同一批关节指令 | `ps -eo args= \| grep -c "[i]gn gazebo"` 必须等于 **1** |
+| `CAM_STATE` 一直是 1(BUSY)，`ERR=0` | 网关 / 协议 | 视觉节点活着但不出结果（没图、话题名不对、判据全失败） | 5 s 后网关会置 3(FAIL)、`CAM_ERR=5`；先看 `/camera/image` 有没有帧 |
 
 最后一条值得展开，因为它最隐蔽：
 
