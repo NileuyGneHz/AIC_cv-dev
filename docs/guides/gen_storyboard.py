@@ -19,7 +19,7 @@ TITLE_H = 54
 
 # (帧 tag 关键字, 标注)。按时间/语义顺序排列，脚本按关键字在目录里找文件。
 SHOTS = [
-    ("r01_loading", "0 · 上料：物料自供料管送到置物台"),
+    ("r01_loading", "0 · 上料：物料自来料架送到置物台"),
     ("r01_arrived", "1 · 到位：龙门让开光路，相机拍照"),
     ("r01_cam",     "2 · 识别：末端相机原图（真视觉输入）"),
     ("r01_grip",    "3 · 吸附：吸盘贴住，建柔性约束"),
@@ -80,7 +80,7 @@ def main():
     height = TITLE_H + ROWS * (CELL_H + BAR_H) + (ROWS + 1) * PAD
     sheet = Image.new("RGB", (width, height), (244, 246, 250))
     draw = ImageDraw.Draw(sheet)
-    draw.text((PAD + 6, 14), "Gazebo 仿真全过程（正俯视机位 · M3 单轮 145 s 实测）",
+    draw.text((PAD + 6, 14), "Gazebo 仿真全过程（M4：来料架 3x4 → 识别 → 分拣货架，单轮 145 s）",
               font=title_font, fill=(20, 22, 28))
 
     missing = []

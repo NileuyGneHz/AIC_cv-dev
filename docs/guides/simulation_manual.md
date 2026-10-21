@@ -1,6 +1,6 @@
 # AIC 仓储仿真使用手册（aic_gazebo_sim）
 
-> 版本：2026-10-20 · 适用于 **M3**（置物台上料 → 固定相机识别 → 吸盘取料 → 货架 4 列 × 3 层）
+> 版本：2026-10-21 · 适用于 **M4**（来料架 3×4 → 置物台识别 → 吸盘取料 → 分拣货架 4 列 × 3 层）
 > 定位：这是**操作手册**——装环境、构建、跑仿真、自验、配置、排障，按需查节。
 > 原理与全部 27 个坑的来龙去脉见 `simulation_guide.md`；接口契约细节见
 > `decision_control_interface.md` / `decision_vision_interface.md`。
@@ -10,13 +10,13 @@
 ## 1. 系统一句话
 
 对齐官方 VirtualNext 平台的节拍：**置物台上料 → 固定相机拍照识别 → 三轴龙门吸盘取料 → 放入货架对应类型列的最低空层（每格一块，不堆叠）**。
-一轮比赛 = 12 个上料轮次：每个轮次把 `material_NN` 从供料管传送到置物台、拍照判型，再按判型放进对应列。
+一轮比赛 = 12 个上料轮次：每个轮次把 `material_NN` 从**来料架（3 行 x 4 列）**它自己的格位传送到置物台、拍照判型，再按判型放进对应列。
 
 ```text
 决策 bt_runner (C++)   —— 12 个"位点" = 12 个上料轮次（slot_id 只是轮次编号）
    │ /control/material_task (aic_msgs/MaterialTask)
    ▼
-gantry_controller.py ── 上料：ign service set_pose 把 material_NN 从供料管传到置物台
+gantry_controller.py ── 上料：ign service set_pose 把 material_NN 从来料架格位传到置物台
    │                 ── 运动：/aic/joint/{x,y,z}/cmd_pos ─► ros_gz_bridge ─► Gazebo
    │                 ── 取/放：/sim/attach_NN / /sim/detach_NN（DetachableJoint 模拟吸盘）
    │  ▲ ── /world/aic_warehouse/model/aic_gantry/joint_state（闭环到位判定）
@@ -82,7 +82,7 @@ cd ~/AIC_cv-dev
 | 选项 | 默认 | 作用 |
 |---|---|---|
 | `--gui` | 关 | 带 Gazebo GUI 观察窗口（录像/演示用；无头跑也能出相机图，EGL 渲染） |
-| `--loop` | 单轮 | 常驻多轮（`once:=false` + `auto_restart:=true`，决策一轮结束自动重开），Ctrl-C 结束。**注意**：M3 的物料是「按库位号」从供料管取的，第二轮会把已放进货架的物料重新传送回置物台（等于把布局打乱重来）——真视觉结果不可作数。**只用于 gt 桩调决策 / 看板连拍演示，录像必须单轮。** 看板会在新一轮开始时自动清盘 |
+| `--loop` | 单轮 | 常驻多轮（`once:=false` + `auto_restart:=true`，决策一轮结束自动重开），Ctrl-C 结束。**注意**：M4 的物料是「按库位号」从来料架取的，第二轮会把已放进货架的物料重新传送回置物台（等于把布局打乱重来）——真视觉结果不可作数。**只用于 gt 桩调决策 / 看板连拍演示，录像必须单轮。** 看板会在新一轮开始时自动清盘 |
 | `--vision gt\|trad` | `gt` | 视觉后端：`gt`=真值桩（按布局表秒回类型）；`trad`=真视觉（读相机图识别） |
 | `--drop-rate 0.6` | 0.0 | 注入 60% 位点「识别失败」（视觉不回结果 → 决策记 TIMEOUT，巡视继续） |
 | `--invalid-rate 0.3` | 0.0 | 注入 30% 位点返回非法值 `"9"`（决策丢弃并计数） |
@@ -141,7 +141,7 @@ materials:
 | `gantry` | `xy_speed:0.30 z_speed:0.20 travel_z:0.02 pad_z0:0.239` + 闭环阈值 | 运动剖面、行进高度、吸盘基准与到位判据 |
 | `camera` | `mount:[x y z r p y]` `width:640 height:480` | **固定式**末端相机（装在置物台正上方；M3 起不再挂在龙门上） |
 | `staging` | `x:0.30 y:-0.15 z:0.10 goto_offset_y:0.10` | 置物台（取料源）+ GOTO 停靠偏移（让吸盘退出光路） |
-| `magazine` | `x:-0.42 floor_z:0.085 tube_h:0.09` | 供料管：12 块物料开机全部叠在这里，按轮次传送 |
+| `infeed` | `cols:4 rows:3 pitch_x:0.25 pitch_y:0.09 y0:-0.44 z:0.10` | 来料架：12 块物料开局按格铺在这里（row-major），按轮次传送到置物台 |
 | `recycle` | `x:-0.10 y:-0.15 z:0.02` | 回收位：识别失败没被取走的物料送到这，保证台面同时只有一块 |
 | `scene_cam` | `pose / fov / width:960 height:540 / update_rate:15` | 自由摄像机（看板全景主画面 `/scene/image`） |
 
@@ -204,7 +204,7 @@ ros2 run aic_gazebo_sim capture_storyboard.py \
 ```
 
 产物：`<out_dir>/NN_<轮次>_<阶段>.png` + `storyboard.txt`（时间索引）。
-机位默认正俯视（`0,0.02,1.55,0,1.5708,1.5708`，能看到供料管 / 置物台 / 货架全貌），
+机位默认正俯视（`0,0.02,1.55,0,1.5708,1.5708`，能看全来料架 / 置物台 / 分拣货架），
 用 `-p scene_pose:="x,y,z,roll,pitch,yaw"` 可换机位。
 
 离线工具：

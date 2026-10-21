@@ -51,10 +51,12 @@ class StoryboardCapture(Node):
         self.declare_parameter("start_delay_s", 4.0)  # 首帧到达后多久抓「初始态」
         self.declare_parameter("exit_after_final_s", 3.0)
         self.declare_parameter("auto_exit", True)
-        # 抓帧机位：正上方垂直向下，能同时看到供料管 / 置物台 / 货架 4x3 格口。
+        # 抓帧机位：正上方垂直向下，能同时看到来料架 3x4 / 置物台 / 分拣货架 4x3 格口。
         # 留空 = 不改机位（用世界里的 scene_cam 默认位姿）。
         # 注意：改机位走 ign service set_pose，必须等世界起来（首帧到达即证明已起来）。
-        self.declare_parameter("scene_pose", "0.0,0.02,1.55,0.0,1.5708,1.5708")
+        # 默认正俯视：同时看到来料架 3x4 与分拣货架 4x3，便于判断"哪格空了、哪格填了"。
+        # 传 "none" 则沿用世界里的 scene_cam 机位（斜俯视）。
+        self.declare_parameter("scene_pose", "0.0,0.02,1.62,0.0,1.5708,1.5708")
         self.declare_parameter("world", "aic_warehouse")
 
         self.out_dir = self.get_parameter("out_dir").value
@@ -116,11 +118,13 @@ class StoryboardCapture(Node):
         if key == "scene" and self.first_scene_at is None:
             now = time.time()
             self.first_scene_at = now
-            if str(self.get_parameter("scene_pose").value).strip():
+            # scene_pose 传 "none" 表示不改机位（注意：传空串会让 rcl 解析参数直接失败）
+            pose_raw = str(self.get_parameter("scene_pose").value).strip()
+            if pose_raw and pose_raw.lower() != "none":
                 self.pending.append((now + 0.5, "cam", "", "切到抓帧机位"))
             self.pending.append(
                 (now + float(self.get_parameter("start_delay_s").value), "scene", "r00_start",
-                 "初始态：12 块物料叠在供料管，货架空"))
+                 "初始态：12 块物料铺在来料架 3x4，分拣货架空"))
 
     # ---------- 事件 ----------
     def _on_task(self, msg):
