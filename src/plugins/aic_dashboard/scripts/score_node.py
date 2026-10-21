@@ -137,8 +137,10 @@ class ScoreState:
         self.lock = threading.Lock()
         self.slots = {}                           # slot(=轮次位点) -> dict(status, got, visit, t)
         for s in range(1, len(types) + 1):
+            # since = 进入 visiting 的时刻（epoch），只给「末位点超时」用；
+            # t 是给人看的 HH:MM:SS 字符串，两者别混用。
             self.slots[s] = {"status": "pending", "got": None,
-                             "visit": None, "t": None}
+                             "visit": None, "since": None, "t": None}
         self.task_type = {}                       # HANDLE 已知的判型（slot -> type）
         self.events = []                          # [(time_str, text)]
         self.cur_visit = 0
@@ -196,6 +198,10 @@ class ScoreState:
                     pl["x"], pl["y"] = self.staging
                 if self.slots[slot]["status"] == "pending":
                     self.slots[slot]["status"] = "visiting"
+                st = self.slots[slot]
+                if st["status"] == "visiting":
+                    st["visit"] = self.cur_visit
+                    st["since"] = time.time()
             elif msg.action == "HANDLE":
                 slot = int(msg.slot_id)
                 self.task_type[slot] = int(msg.material_type)
@@ -213,10 +219,13 @@ class ScoreState:
             # 免去手动 POST /api/reset；单轮模式不会触发——每轮每位点只走一次）。
             if st["status"] in ("ok", "wrong", "timeout"):
                 for s2 in self.slots.values():
-                    s2.update(status="pending", got=None, visit=None, t=None)
+                    s2.update(status="pending", got=None, visit=None,
+                              since=None, t=None)
                 self.task_type.clear()
                 self.events.append((time.strftime("%H:%M:%S"), "检测到新一轮巡视，已自动清盘"))
             st["status"] = "visiting"
+            st["visit"] = self.cur_visit
+            st["since"] = time.time()
 
     def on_vision(self, msg):
         with self.lock:
@@ -305,11 +314,32 @@ class ScoreState:
     def reset(self):
         with self.lock:
             for st in self.slots.values():
-                st.update(status="pending", got=None, visit=None, t=None)
+                st.update(status="pending", got=None, visit=None, since=None, t=None)
             self.task_type.clear()
+            # 物料也要一起归位：不重置的话第二轮起 plates 还停在上一轮的
+            # placed/recycled，态势图会把「已放进货架」画成仍占着来料架格位。
+            for idx, pl in self.plates.items():
+                ix, iy = self.infeed_slot(idx)
+                pl.update(status="magazine", x=ix, y=iy)
             self.events.append((time.strftime("%H:%M:%S"), "已重置，等待新一轮巡视"))
             self.cur_visit, self.cur_slot = 0, None
             self.last_vision = None
+
+    def check_timeout(self, limit_s):
+        """末位点兜底：最后一条 GOTO 之后不会再有新任务，无法靠「换位」推断超时。
+
+        前 11 个位点靠「新 GOTO 到达时上一位仍在识别中」判 TIMEOUT；
+        第 12 位没有下一条 GOTO，若识别失败会永远停在「识别中」，
+        看板就永远差一格不变绿。这里用时间兜底（阈值要大于正常
+        「移动 + 识别 + 搬运」的总时长，默认 35 s）。
+        """
+        now = time.time()
+        with self.lock:
+            for slot, st in self.slots.items():
+                if st["status"] != "visiting" or not st.get("since"):
+                    continue
+                if now - st["since"] > limit_s:
+                    self._judge_locked(slot, None)
 
     # ---------- HTTP 侧 ----------
     def snapshot(self):
@@ -619,12 +649,16 @@ class ScoreNode(Node):
         layout_yaml = self.declare_parameter("layout_yaml", "").value
         port = int(self.declare_parameter("http_port", 8080).value)
         self.world = self.declare_parameter("world", "aic_warehouse").value
-        self.declare_parameter("task_topic", "/control/material_task")
-        self.declare_parameter("arrived_topic", "/sim/gantry_arrived")
-        self.declare_parameter("handled_topic", "/sim/handle_done")
-        self.declare_parameter("vision_topic", "/vision/material_type")
-        self.declare_parameter("image_topic", "/camera/image")
-        self.declare_parameter("scene_image_topic", "/scene/image")
+        # 这些话题原来「声明了但没用」，订阅处写死常量；现场改话题名会静默失效。
+        task_topic = self.declare_parameter("task_topic", "/control/material_task").value
+        arrived_topic = self.declare_parameter("arrived_topic", "/sim/gantry_arrived").value
+        handled_topic = self.declare_parameter("handled_topic", "/sim/handle_done").value
+        vision_topic = self.declare_parameter("vision_topic", "/vision/material_type").value
+        image_topic = self.declare_parameter("image_topic", "/camera/image").value
+        scene_image_topic = self.declare_parameter("scene_image_topic", "/scene/image").value
+        # 末位点超时兜底（见 ScoreState.check_timeout）
+        self.visit_timeout_s = float(
+            self.declare_parameter("visit_timeout_s", 35.0).value)
         self.declare_parameter("joint_state_topic",
                                "/world/aic_warehouse/model/aic_gantry/joint_state")
 
@@ -640,11 +674,10 @@ class ScoreNode(Node):
             self.cam = tuple(float(v) for v in default_cam)
         self.cam_lock = threading.Lock()
 
-        self.create_subscription(MaterialTask, "/control/material_task",
-                                 self.state.on_task, 10)
-        self.create_subscription(UInt8, "/sim/gantry_arrived", self.state.on_arrived, 10)
-        self.create_subscription(UInt8, "/sim/handle_done", self.state.on_done, 10)
-        self.create_subscription(String, "/vision/material_type", self.state.on_vision, 10)
+        self.create_subscription(MaterialTask, task_topic, self.state.on_task, 10)
+        self.create_subscription(UInt8, arrived_topic, self.state.on_arrived, 10)
+        self.create_subscription(UInt8, handled_topic, self.state.on_done, 10)
+        self.create_subscription(String, vision_topic, self.state.on_vision, 10)
         js_qos = QoSProfile(depth=10, history=HistoryPolicy.KEEP_LAST,
                             reliability=ReliabilityPolicy.BEST_EFFORT)
         from sensor_msgs.msg import JointState
@@ -652,15 +685,17 @@ class ScoreNode(Node):
             "joint_state_topic").value, self.state.on_joint, js_qos)
         img_qos = QoSProfile(depth=1, history=HistoryPolicy.KEEP_LAST,
                              reliability=ReliabilityPolicy.BEST_EFFORT)
-        self.create_subscription(Image, "/camera/image", self._on_image, img_qos)
-        self.create_subscription(Image, self.get_parameter(
-            "scene_image_topic").value, self._on_scene_image, img_qos)
+        self.create_subscription(Image, image_topic, self._on_image, img_qos)
+        self.create_subscription(Image, scene_image_topic, self._on_scene_image, img_qos)
         # 夹/放信号（控制侧本来就发，桥 ROS->GZ；ROS 侧订阅同样收得到）
         for s in range(1, len(types) + 1):
             self.create_subscription(Empty, "/sim/attach_{:02d}".format(s),
                                      lambda m, s=s: self.state.on_grip(s, True), 10)
             self.create_subscription(Empty, "/sim/detach_{:02d}".format(s),
                                      lambda m, s=s: self.state.on_grip(s, False), 10)
+
+        # 1 Hz 检查末位点是否卡在「识别中」（第 12 位没有下一条 GOTO 可依赖）
+        self.create_timer(1.0, lambda: self.state.check_timeout(self.visit_timeout_s))
 
         self.dash = DashboardHTTP(self.state, port, self._move_cam)
         self.dash.start()
