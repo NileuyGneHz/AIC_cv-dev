@@ -1,4 +1,4 @@
-# Gazebo 仿真（M2）：12 库位 + 三轴龙门 + 抓取码放闭环
+# Gazebo 仿真（M4）：来料架 3x4 + 三轴龙门（吸盘）+ 识别后分拣入架
 
 > 本文是**原理深读文档**（架构、实现细节、23 个坑的来龙去脉）；
 > 装环境 / 构建 / 跑仿真 / 自验 / 配置 / 排障的**操作手册**见 `simulation_manual.md`，
@@ -445,6 +445,35 @@ ros2 launch aic_gazebo_sim sim_decision.launch.py invalid_rate:=0.3
     自验会直接抓到（C3/C4/C5 三条 FAIL，x 偏 −475 mm）。判读口诀：
     **凡是"下一轮要用的状态"，都必须在收到任务时就写，不能等动作执行完**。
     真正的执行结果只用于统计/判分（看板走 `attach_XX`/`detach_XX` 是另一条路，不受影响）。
+
+29. **`pkill -f gzserver` 在 Fortress 上是空操作；清理代码的 `&&` 短路会漏杀子进程**
+    （2026-10-21，一次「PASS 之后仍有两个仿真在跑」）。
+
+    两件事叠在一起：
+
+    - 进程名不是 `gzserver`。Fortress 起的是 `ign gazebo -s -r --headless-rendering ...`，
+      `gzserver` 是 classic 的名字。`pkill -f gzserver` 匹配 0 个进程，**退出码非 0 但
+      脚本里带 `2>/dev/null` 就完全看不出来**，于是「清场」等于没做。
+    - `verify_sim_m2.sh` 的收尾写成
+      `pgrep -P "$LAUNCH_PID" && kill_tree ...`。launch 收到 SIGINT 后往往 1–2 s 内先退出，
+      子进程被 reparent 到 1，`pgrep -P` 再也查不到 → `kill_tree` 永不执行 →
+      gzserver 变成孤儿继续跑。
+
+    症状极具迷惑性：单看某一轮，`PASS：决策 12/12`，落位 0.0 mm，一切正常。
+    但接着跑 PLC 接管时，**两个物理世界订阅同一批 `/clock`、`/aic/joint/*/cmd_pos`，
+    互相抢关节指令**：RTF 掉到约 1/10，日志出现 `到位超时 8.0 s … 按到位继续`，
+    单轮从 10 s 涨到 36 s，落位偏移几十毫米——而 PLC 侧 `SHELF_BITS` 仍是 12 个 1。
+
+    修法（已落地）：
+    - 新增 `scripts/lib/sim_cleanup.sh`：`sim_pids / sim_kill_stale / sim_count_gazebo`，
+      按真实进程名清，并排除调用者自身（`pkill -f` 会匹配到自己的命令行，
+      我在 shell 里直接 `pkill -f "ros2 launch"` 就把自己那条命令杀了）；
+    - 收尾顺序改成**先快照子进程再发信号**，最后再用 `sim_kill_stale` 兜一遍；
+    - `test_plc_{one,full}.sh` 的 trap 也走同一套。
+
+    一分钟自检：`ps -eo args= | grep -c "[i]gn gazebo"`，跑之前必须是 0，跑起来必须是 1。
+    （不要用 `pgrep -f "ign gazebo"`：它会匹配到调用者自己的命令行，永远多 1–2 个。）
+    验收时若某轮突然 30 s+，先数实例，再看代码。
 
 ## 6. 已验证 / 未做
 

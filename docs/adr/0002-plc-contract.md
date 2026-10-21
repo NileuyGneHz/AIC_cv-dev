@@ -62,4 +62,4 @@
 3. 队伍决定直接用赛方工程做国赛，不自写 PLC 程序。
 
 在此之前，默认路径（5 字段 + `main.st`）是自洽且可验证的：
-`rsc_round_test.py` 15 项断言、Modbus 接管整轮 12/12。
+`rsc_round_test.py` 21 项断言、Modbus 接管整轮 12/12。

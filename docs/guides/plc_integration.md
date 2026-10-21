@@ -418,7 +418,7 @@ bash scripts/test_plc_one.sh       # 只跑 1 块，改完代码先跑这个，�
 | 落位 | 四列各三层，按类型填满 L1→L3 |
 | 末态 | `SHELF_BITS=111111111111`、`SHELF_FULL=1`、`PLACED_CNT=12` |
 | 协议层 | 只读模式心跳递增、寄存器/线圈/离散输入读写正常 |
-| RSC 后端 | 干跑整轮握手 15 项断言全过：GOTO/HANDLE 迁移、CAM_DATA 回写、
+| RSC 后端 | 干跑整轮握手 21 项断言全过：GOTO/HANDLE 迁移、CAM_DATA 回写、
   SHELF_BITS 置位、负坐标 -10 mm 不被折成 65526、心跳递增 |
 
 接管整轮比决策层整轮（145 s）略快，因为主站是「一次握手接着下一次」没有
