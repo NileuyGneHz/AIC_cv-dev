@@ -268,6 +268,18 @@ PLC: 读 CAM_DATA ; TASK_CMD := 2             # 按类型抓放
 网关: SHELF_BITS 置位, TASK_STATE := DONE
 ```
 
+两条容易写错的地方：
+
+1. **`TASK_CMD` 要「保持到被接受」，不能发一个扫描周期就撤。** 网关轮询 50 Hz，
+   一个周期（10–20 ms）的脉冲可能正好落在两次轮询之间被漏掉。等 `TASK_STATE` 变成
+   预期值（1=GOTO / 2=HANDLE）再清 0。Modbus 下网关本来就会把 `TASK_CMD` 清 0；
+   RSC 下它归 PLC，网关写不动——同一段逻辑能覆盖两边。
+2. **`Camera.Request` 不要用。** 网关在「轴到位」时已自动触发视觉
+   （`_on_arrived` → `/vision/trigger`），PLC 再拉一次会重复识别、打乱 `CAM_STATE` 的计时。
+
+> 完整的、可编译的 PLC 骨架在 **`docs/plc/main.st`**（12 位点状态机 + 心跳看门狗），
+> 配套说明见 `docs/plc/README.md`。下面这段只是握手的最小示意。
+
 ### 结构化文本（ST，IEC 61131-3 风格）
 
 ```pascal

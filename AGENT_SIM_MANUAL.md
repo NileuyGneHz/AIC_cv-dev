@@ -248,7 +248,9 @@ gantry_controller.py ──► /aic/joint/{x,y,z}/cmd_pos ──► ros_gz_bridg
 | `src/plugins/aic_dashboard/scripts/score_node.py` | 806 | 判分看板（纯旁路，只订阅） |
 | `src/plugins/aic_plc_gateway/scripts/plc_gateway.py` | 900+ | 状态机 + Modbus/RSC 双后端 |
 | `src/plugins/aic_plc_gateway/scripts/rsc_link.py` | 660 | RSC 标签表层（被 `RscBackend` 引用） |
-| `src/plugins/aic_plc_gateway/config/plc_rsc_map.yaml` | 80 | 26 个标签 → PLC 变量路径 |
+| `src/plugins/aic_plc_gateway/config/plc_rsc_map.yaml` | 83 | 26 个标签 → PLC 变量路径 |
+| `docs/plc/main.st` | 198 | PLC 侧巡视状态机 + 看门狗（骨架，字段名与 YAML 对齐） |
+| `docs/adr/0002-plc-contract.md` | — | PLC 数据契约选型：默认 5 字段，官方两代作现场分支 |
 
 ### 2.5 官方 ↔ 仿真 对照（写汇报材料直接用）
 
@@ -360,7 +362,7 @@ gantry_controller.py ──► /aic/joint/{x,y,z}/cmd_pos ──► ros_gz_bridg
   能跑一轮 `plc_master_demo` 等价流程，日志里能看到 26 个标签读写。
 - **依赖**：T05。
 
-#### T07 契约对齐（决定要不要兼容 `Cam`）
+#### T07 契约对齐（决定要不要兼容 `Cam`） —— **已完成**（写了 `docs/adr/0002-plc-contract.md`：默认自定义 5 字段，官方两代作为现场分支，触发条件已写明）
 - **背景**：官方有两代契约（§1.4）。我们现在的 YAML 是自创的 5 字段 `Camera`
   （`Request/State/Data/Ms/Err`），**和官方两代都不一样**。
 - **动作**：二选一，写进 ADR：
@@ -411,14 +413,14 @@ gantry_controller.py ──► /aic/joint/{x,y,z}/cmd_pos ──► ros_gz_bridg
   里面至少有一条 `NONE`（全 `NotExists` 说明 POU 名或权限不对）。
 - **坑**：必须 python3.10；容器内跑要换 `10.88.0.2`。
 
-#### T12 PLC 侧 ST 骨架
+#### T12 PLC 侧 ST 骨架 —— **已完成**（`docs/plc/main.st`：12 位点状态机 + 看门狗，关键字配平已校验）
 - **文件**：`docs/plc/` 下新建 `main.st`（示意代码，不进 PLCnext Engineer）
 - **动作**：按 T07 选定的契约写：`Cam` 握手状态机（IDLE→START→WAIT_DONE→READ_DATA→MOVE）
   + 看门狗（心跳 2 s 不变切安全态）。
 - **验收**：能被 PLCnext Engineer 直接粘贴编译（人工确认）；状态迁移表与
   `plc_integration.md` §7 的握手时序一致。
 
-#### T13 PLCnextBase 使用点
+#### T13 PLCnextBase 使用点 —— **已完成**（`docs/plc/README.md`：三个 FB 的用途与坑，接口指向官方 CHM）
 - **动作**：在 `docs/plc/README.md` 记三条：`PBCL_SysGetMicrotick`（测拍照耗时）、
   `PBCL_FileCsvWrite`（结果落盘）、`PBCL_Conv*`（与 PC 端 int16 补码对齐）。
 - **验收**：写清每个 FB 的输入输出，别抄 CHM 原文。
