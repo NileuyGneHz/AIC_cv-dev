@@ -50,3 +50,6 @@ __pycache__/
 .lo_profile/
 .lo_tmp/
 logs/ppt_qa/
+
+# 厂商原始 SDK 包（.so / .pcwlx / .chm，61 MB），按 AGENTS.md 大文件不进 git
+PLC-softwares/

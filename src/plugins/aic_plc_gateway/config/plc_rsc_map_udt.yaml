@@ -1,0 +1,83 @@
+# PLCnext RSC 标签表（UDT 版：Camera 结构体整块读写）
+#
+# 与 plc_rsc_map.yaml 的区别
+# --------------------------
+# 默认表把 Camera 的每个字段当独立变量读写（每个周期 1 次 Read 取 4 个字段）。
+# 本表把 Camera 当一个 UDT 整块搬：1 次 Read 拿全部字段，1 次 Write 回状态。
+# 官方设备的 `Camera` 本来就是结构体，接近它的原貌。
+#
+# 前提：PLC 工程里要有**逐字一致**的 UDT 声明（见 docs/guides/plcnext_rsc_setup.md §4.2）。
+# UDT 字段类型/顺序一旦与下面 schema 不一致，解码会报 TypeMismatch 或字段错位。
+#
+#   ros2 run aic_plc_gateway rsc_link.py --dry-run --watch \
+#       --map $(ros2 pkg prefix aic_plc_gateway)/share/aic_plc_gateway/config/plc_rsc_map_udt.yaml
+
+program: Main
+prefix: "Arp.Plc.Eclr/"
+
+structs:
+  - udt: udt_Camera
+    path: "{program}.Camera"
+    # 整块「读」，逐字段「写」：
+    #   PLC 只写 Request，算法只写 Data/State/Ms/Err。若这里写 dir: both，
+    #   每个周期都会把 Request 连同旧值一起写回去，可能把 PLC 新置的请求冲掉。
+    dir: plc2gw
+    note: "官方 Camera 契约：PLC 写 Request，算法写 Data/State"
+    schema: |
+      TYPE
+          udt_Camera : STRUCT
+              Request : BOOL;
+              Data    : INT;
+              State   : INT;
+              Ms      : INT;
+              Err     : INT;
+          END_STRUCT
+      END_TYPE
+    fields:
+      Request: CAM_REQ
+      Data: CAM_DATA
+      State: CAM_STATE
+      Ms: CAM_MS
+      Err: CAM_ERR
+
+tags:
+  # ---- Camera 各字段的标签名（读走上面的 UDT 整块，写仍按字段）----
+  - {tag: CAM_REQ,     path: "{program}.Camera.Request", type: BOOL, dir: plc2gw,
+     note: "由 UDT 整块读出，此处 path 仅作声明"}
+  - {tag: CAM_DATA,    path: "{program}.Camera.Data",    type: INT,  dir: gw2plc}
+  - {tag: CAM_STATE,   path: "{program}.Camera.State",   type: INT,  dir: gw2plc}
+  - {tag: CAM_MS,      path: "{program}.Camera.Ms",      type: INT,  dir: gw2plc}
+  - {tag: CAM_ERR,     path: "{program}.Camera.Err",     type: INT,  dir: gw2plc}
+
+  # ---- 任务下发 ----
+  - {tag: TASK_CMD,    path: "{program}.Task.Cmd",       type: INT,  dir: plc2gw}
+  - {tag: POS_SET,     path: "{program}.Pos",            type: INT,  dir: plc2gw}
+
+  # ---- 三轴反馈 ----
+  - {tag: X_ACT,       path: "{program}.Axis.X.Actual",  type: INT,  dir: gw2plc}
+  - {tag: Y_ACT,       path: "{program}.Axis.Y.Actual",  type: INT,  dir: gw2plc}
+  - {tag: Z_ACT,       path: "{program}.Axis.Z.Actual",  type: INT,  dir: gw2plc}
+  - {tag: AXIS_STATE,  path: "{program}.Axis.State",     type: INT,  dir: gw2plc}
+
+  # ---- 货架与计数 ----
+  - {tag: SHELF_BITS,  path: "{program}.Shelf.Bits",     type: DINT, dir: gw2plc}
+  - {tag: SHELF_FULL,  path: "{program}.Shelf.Full",     type: BOOL, dir: gw2plc}
+  - {tag: PLACED_CNT,  path: "{program}.Shelf.Count",    type: INT,  dir: gw2plc}
+  - {tag: TASK_STATE,  path: "{program}.Task.State",     type: INT,  dir: gw2plc}
+
+  # ---- 诊断 ----
+  - {tag: HEARTBEAT,   path: "{program}.Diag.Heartbeat", type: DINT, dir: gw2plc}
+  - {tag: ERR,         path: "{program}.Diag.Err",       type: INT,  dir: gw2plc}
+
+  # ---- 触发（BOOL，等同 Modbus 线圈）----
+  - {tag: COIL_TRIGGER, path: "{program}.Cmd.Trigger",   type: BOOL, dir: plc2gw}
+  - {tag: COIL_ATTACH,  path: "{program}.Cmd.Attach",    type: BOOL, dir: plc2gw}
+  - {tag: COIL_DETACH,  path: "{program}.Cmd.Detach",    type: BOOL, dir: plc2gw}
+  - {tag: COIL_RESET,   path: "{program}.Cmd.Reset",     type: BOOL, dir: plc2gw}
+
+  # ---- 离散输入 ----
+  - {tag: DI_INPOS,    path: "{program}.Di.InPos",       type: BOOL, dir: gw2plc}
+  - {tag: DI_CAM_DONE, path: "{program}.Di.CamDone",     type: BOOL, dir: gw2plc}
+  - {tag: DI_HELD,     path: "{program}.Di.Held",        type: BOOL, dir: gw2plc}
+  - {tag: DI_FULL,     path: "{program}.Di.Full",        type: BOOL, dir: gw2plc}
+  - {tag: DI_READY,    path: "{program}.Di.Ready",       type: BOOL, dir: gw2plc}

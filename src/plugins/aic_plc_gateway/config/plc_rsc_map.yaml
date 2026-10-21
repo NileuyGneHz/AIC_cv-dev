@@ -1,0 +1,83 @@
+# PLCnext RSC 标签表（默认：逐字段读写，最省事的一种）
+#
+# 用法（RSC 是独立工具，不是 plc_gateway 的 launch 开关）：
+#   ros2 run aic_plc_gateway rsc_link.py --dry-run --watch     # 内存假 PLC 自检
+#   ros2 run aic_plc_gateway rsc_link.py --host 192.168.3.99 --read CAM_DATA
+#   PLC 侧变量声明见 docs/guides/plcnext_rsc_setup.md §4；两边名字必须逐字一致。
+#
+# 说明：plc_gateway 目前只实现 Modbus TCP 从站；RSC 链路停在「标签表 + 读写」这一层，
+# 还没接进网关状态机（见 docs/guides/plc_integration.md §9）。
+#
+# 约定
+# ----
+# tag   : 网关内部语义名，**不要改**（plc_gateway.py 里按这个名字取数）
+# path  : PLC 变量路径；不写 `Arp.` 开头则自动拼 `prefix`
+#         {program} 会被下面的 program 替换 —— 现场换 PLC 工程只改这一处
+# type  : PLC 侧声明的 IEC 类型。BOOLEAN 用 BOOL；16 位用 INT；32 位用 DINT
+# dir   : plc2gw = PLC 写、网关读；gw2plc = 网关写、PLC 读
+#
+# 调试：先干跑，确认映射无误再去连真机
+#   python3 rsc_link.py --map src/plugins/aic_plc_gateway/config/plc_rsc_map.yaml \
+#           --dry-run --watch
+#
+# 注意：RSC 不做类型转换（TypeMismatch），YAML 里的 type 与 PLC 声明不一致会直接被拒。
+
+program: Main
+prefix: "Arp.Plc.Eclr/"
+
+# 结构体统一读写（一次往返搬完整块）——默认不启用，见 plc_rsc_map_udt.yaml
+structs: []
+
+tags:
+  # ---- Camera 结构体：与官方设备契约同名 ----
+  - {tag: CAM_REQ,     path: "{program}.Camera.Request", type: BOOL, dir: plc2gw,
+     note: "PLC 请求拍照；网关取走后写回 FALSE"}
+  - {tag: CAM_STATE,   path: "{program}.Camera.State",   type: INT,  dir: gw2plc,
+     note: "0=IDLE 1=BUSY 2=DONE 3=FAIL"}
+  - {tag: CAM_DATA,    path: "{program}.Camera.Data",    type: INT,  dir: gw2plc,
+     note: "物料编号 1..4，0=未识别（官方 Camera.Data）"}
+  - {tag: CAM_MS,      path: "{program}.Camera.Ms",      type: INT,  dir: gw2plc,
+     note: "本次识别耗时 ms"}
+  - {tag: CAM_ERR,     path: "{program}.Camera.Err",     type: INT,  dir: gw2plc}
+
+  # ---- 任务下发（PLC → 网关 → 控制层）----
+  - {tag: TASK_CMD,    path: "{program}.Task.Cmd",       type: INT,  dir: plc2gw,
+     note: "1=GOTO 2=HANDLE；网关执行后写回 0"}
+  - {tag: POS_SET,     path: "{program}.Pos",            type: INT,  dir: plc2gw,
+     note: "目标库位 1..12（官方变量 Pos）"}
+
+  # ---- 三轴反馈 ----
+  - {tag: X_ACT,       path: "{program}.Axis.X.Actual",  type: INT,  dir: gw2plc,
+     note: "mm，有符号 16 位"}
+  - {tag: Y_ACT,       path: "{program}.Axis.Y.Actual",  type: INT,  dir: gw2plc}
+  - {tag: Z_ACT,       path: "{program}.Axis.Z.Actual",  type: INT,  dir: gw2plc}
+  - {tag: AXIS_STATE,  path: "{program}.Axis.State",     type: INT,  dir: gw2plc,
+     note: "0=IDLE 1=MOVING 2=INPOS 9=FAULT"}
+
+  # ---- 货架与计数 ----
+  - {tag: SHELF_BITS,  path: "{program}.Shelf.Bits",     type: DINT, dir: gw2plc,
+     note: "占用位图，bit(n-1)=第 n 号已入位"}
+  - {tag: SHELF_FULL,  path: "{program}.Shelf.Full",     type: BOOL, dir: gw2plc}
+  - {tag: PLACED_CNT,  path: "{program}.Shelf.Count",    type: INT,  dir: gw2plc}
+  - {tag: TASK_STATE,  path: "{program}.Task.State",     type: INT,  dir: gw2plc,
+     note: "0=IDLE 1=GOTO 2=HANDLE 5=DONE 9=FAULT"}
+
+  # ---- 诊断 ----
+  - {tag: HEARTBEAT,   path: "{program}.Diag.Heartbeat", type: DINT, dir: gw2plc,
+     note: "每秒 +1，PLC 用它判断网关存活"}
+  - {tag: ERR,         path: "{program}.Diag.Err",       type: INT,  dir: gw2plc}
+
+  # ---- 线圈（PLC 侧是 BOOL 变量，语义等同 Modbus 线圈）----
+  - {tag: COIL_TRIGGER, path: "{program}.Cmd.Trigger",   type: BOOL, dir: plc2gw,
+     note: "上升沿触发一次拍照；网关消费后写回 FALSE"}
+  - {tag: COIL_ATTACH,  path: "{program}.Cmd.Attach",    type: BOOL, dir: plc2gw}
+  - {tag: COIL_DETACH,  path: "{program}.Cmd.Detach",    type: BOOL, dir: plc2gw}
+  - {tag: COIL_RESET,   path: "{program}.Cmd.Reset",     type: BOOL, dir: plc2gw}
+
+  # ---- 离散输入（网关 → PLC，只读语义）----
+  - {tag: DI_INPOS,    path: "{program}.Di.InPos",       type: BOOL, dir: gw2plc,
+     note: "轴已到位，可以拍照"}
+  - {tag: DI_CAM_DONE, path: "{program}.Di.CamDone",     type: BOOL, dir: gw2plc}
+  - {tag: DI_HELD,     path: "{program}.Di.Held",        type: BOOL, dir: gw2plc}
+  - {tag: DI_FULL,     path: "{program}.Di.Full",        type: BOOL, dir: gw2plc}
+  - {tag: DI_READY,    path: "{program}.Di.Ready",       type: BOOL, dir: gw2plc}
