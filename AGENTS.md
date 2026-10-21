@@ -56,25 +56,44 @@
 4. **大文件不进 git**：数据集、模型权重、视频（.mp4）入 `.gitignore`；只版本化代码 / 配置 / 标定参数 / 文档。
 5. **范围**：本项目产物一律收在 `~/AIC_cv-dev/` 内；`~/nileuy_ros_ws/rm_nav-dev`、`~/EC_ws` 仅只读参考。
 
-## 5. 目录约定（规划——按用户要求暂未搭建）
+## 5. 目录约定
 
-> 2026-10-14 明确：本工作区当前**只建 AGENTS.md 与 skills.md 两个文件**；工程脚手架按需再搭。
+> 2026-10-21 校准：按**实际存在的包**记录，不再保留只有 `.gitkeep` 的占位目录。
+> 理由：colcon 只认带 `package.xml` 的目录，空目录既不能构建，又会让人误判「这块已经实现了」。
+> 当天清理了 8 个此类占位（`aic_bringup` / `aic_calib` / `aic_recorder` / `aic_io_bridge` /
+> `aic_motion` / `aic_sim_devices` / `aic_vision_core` / `aic_vision_dl`）。
 
 ```text
 AIC_cv-dev/
-├── AGENTS.md / skills.md     ← 本文件与技能注册表（已建）
-├── README.md                 ← 待建：快速开始 / 运行说明
-├── docs/                     ← 赛题资料、标定笔记、提交材料模板（待建）
-├── src/
-│   ├── vision/               ← 缺陷检测（train / inference / models）、预处理、手眼标定
-│   ├── control/              ← 运动规划、夹爪、串口 / 通信
-│   ├── logic/                ← 任务调度、状态机
-│   └── utils/                ← 日志、配置
-├── config/                   ← 相机 / 机械臂参数、缺陷类别定义
-├── data/                     ← samples（样本）/ calibration（标定）/ results（输出）
-├── scripts/                  ← 运行、录制、打包脚本
-└── tests/                    ← 测试
+├── AGENTS.md / skills.md          约定与技能注册表
+├── README.md                      当前状态 / 快速开始 / 目录
+├── AGENT_SIM_MANUAL.md            给接手者（人 或 agent）的仿真全景手册
+├── docs/
+│   ├── guides/                    验收 / 仿真 / PLC / 录制 / 三份接口契约
+│   ├── plc/main.st                PLC 侧巡视状态机骨架（ST）
+│   ├── adr/                       选型记录
+│   └── competition/               技术文档与素材
+├── src/                           7 个可构建包
+│   ├── plugins/  aic_msgs · aic_dashboard · aic_plc_gateway
+│   ├── decision/ aic_warehouse · aic_behavior_tree
+│   ├── simulation/ aic_gazebo_sim
+│   └── vision/   aic_vision_trad
+├── scripts/                       构建 / 运行 / 自验 / PLC 测试
+├── config/  data/  docker/  tools/ 配置、样本、镜像、开发工具
+└── logs/                          运行产物（不入 git）
 ```
+
+**后续要加的包**（按需创建，不要提前建空目录）：
+
+| 建议位置 | 职责 | 何时建 |
+|---|---|---|
+| `src/control/aic_motion` | 真机运动：串口/CAN 驱动替换 `gantry_controller` 执行层 | 手上真有驱动器时 |
+| `src/control/aic_io_bridge` | 真机 IO：电磁阀 / 真空泵 / 气缸 | 同上 |
+| `src/vision/aic_vision_core` | 视觉公共库（标定、预处理） | 出现第二个视觉后端时 |
+| `src/vision/aic_vision_dl` | 深度学习后端 | 传统判据在实拍上不够用时 |
+| `src/plugins/aic_bringup` | 多机/多节点统一 launch | launch 组合超过 3 个文件时 |
+
+判断标准：**有 `package.xml` 且 `colcon build` 能编过才算一个包**；只有文档/占位不算。
 
 ## 6. 工作方式与规范（Conventions）
 
