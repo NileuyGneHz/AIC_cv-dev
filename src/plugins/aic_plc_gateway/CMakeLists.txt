@@ -21,4 +21,10 @@ install(DIRECTORY config
   DESTINATION share/${PROJECT_NAME}
 )
 
+# RSC SDK 的 wheel 也要随包走：rsc_link.py 会按 share/aic_plc_gateway/third_party/
+# 找 PyPlcnextRsc，否则换个工作目录跑就 import 不到（源码树里的路径不再可见）。
+install(DIRECTORY third_party
+  DESTINATION share/${PROJECT_NAME}
+)
+
 ament_package()
