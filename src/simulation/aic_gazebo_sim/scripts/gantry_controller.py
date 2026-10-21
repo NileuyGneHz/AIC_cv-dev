@@ -194,6 +194,10 @@ class GantryController(Node):
         self._staged = 0        # 当前在置物台上的物料编号（0 = 空）
         self._picked = False    # 置物台上的物料是否已被吸盘取走
         self._placed = collections.Counter()   # 每个类型列已放的块数（选最低空层）
+        # 本轮已 GOTO 过的位点。同一位点再次出现 = 决策 auto_restart 重开了一轮
+        # （单轮内每个位点只访问一次），必须清空 _placed，否则第 2 轮从第 4 层起
+        # 找不到格位：不吸不放却照样发 handled，决策侧还会记 12/12 OK。
+        self._visited_slots = set()
         # 置物台坐标缓存 + GOTO 停靠偏移（吸盘让出固定相机的光路）
         self._staging_xy = self.layout.staging_xy()
         self._goto_offset_y = float(
@@ -281,6 +285,17 @@ class GantryController(Node):
 
         if action == "GOTO":
             self._round += 1
+            slot_id = slot
+            n_total = self.layout.cols * self.layout.rows
+            # 新一轮判定：位点重访，或本轮位点已全部走过（决策 auto_restart / --loop）。
+            # 只在 GOTO 侧做：_placed 是「本轮层位账本」，跨轮必须归零，
+            # 但轮内不能因为某块识别失败（没走 HANDLE）就提前清。
+            if slot_id in self._visited_slots or len(self._visited_slots) >= n_total:
+                self._placed.clear()
+                self._visited_slots.clear()
+                self.get_logger().info(
+                    "[sim/control] 检测到新一轮巡视（slot %d 再次到访），层位计数已清零" % slot_id)
+            self._visited_slots.add(slot_id)
             # 轮次随步骤一起入队：队列可能积压（决策 fire-and-forget），
             # 执行时再读 self._round 会把第 1 轮的日志打成「轮次 2」。
             self.queue.append(self._goto_steps(slot, self._round))

@@ -87,6 +87,8 @@ def main():
     check(len(sent) == 1 and sent[-1].action == "GOTO" and sent[-1].slot_id == 3,
           "下发 GOTO slot=3（实际 %r）"
           % ((None if not sent else (sent[-1].action, sent[-1].slot_id)),))
+    check(plc_read(node, "TASK_CMD") == 1,
+          "网关不清 TASK_CMD（RSC 下该位归 PLC，清位是空操作）")
 
     # 3) 控制器到位 + 视觉出结果
     node._on_arrived(UInt8(data=3))
@@ -128,6 +130,24 @@ def main():
     node._hb_t -= 1.1            # 把上次心跳时间往前拨，逼它 +1
     node._tick()
     check(plc_read(node, "HEARTBEAT") == hb0 + 1, "HEARTBEAT 递增")
+
+    # 9) CAM_REQ 是电平信号：保持为 1 只能触发一次，且不能把识别结果打回 BUSY
+    trig = []
+    node.trigger_pub.publish = lambda m: trig.append(m)
+    plc_write(node, "CAM_REQ", True)
+    node._tick()
+    check(len(trig) == 1, "CAM_REQ 上升沿 -> 触发 vision 一次（实际 %d）" % len(trig))
+    node._tick()
+    check(len(trig) == 1, "CAM_REQ 保持 1 不重发触发（实际 %d）" % len(trig))
+    node._on_vision(String(data="3"))
+    node._tick()
+    check(node.cam_state == CAM_DONE,
+          "CAM_REQ 仍为 1 时 CAM_STATE 不被改回 BUSY（实际 %d）" % node.cam_state)
+    check(node.io.can_write("CAM_REQ") is False,
+          "RSC 下 CAM_REQ 不可写（清位必须由 PLC 程序自己复位）")
+    plc_write(node, "CAM_REQ", False)
+    node._tick()
+    check(node.cam_state == CAM_DONE, "CAM_REQ 落 0 后结果保持不变")
 
     node.io.close()
     node.destroy_node()

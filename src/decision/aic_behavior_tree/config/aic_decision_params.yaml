@@ -11,7 +11,7 @@ aic_decision_bt:
     vision_topic: "/vision/material_type"      # std_msgs/String，取值 "1".."4"
     vision_timeout_s: 3.0                      # 单个位点等待识别结果的超时
     vision_trigger_enable: false               # 是否主动请求 vision 采集（与 vision 组待定，默认关）
-    vision_trigger_topic: "/vision/capture"    # 仅当上面的开关为 true 时使用
+    vision_trigger_topic: "/vision/trigger"    # 仅当上面的开关为 true 时使用；与 gantry/vision 同一条话题
 
     # ---- control 侧契约（见 docs/guides/decision_control_interface.md）----
     control_task_topic: "/control/material_task"   # aic_msgs/MaterialTask

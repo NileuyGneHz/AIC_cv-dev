@@ -17,28 +17,28 @@ control 侧若需要握手机制，先提，再在 `aic_decision_params.yaml` �
 ## 2. MaterialTask 消息
 
 ```text
-uint8 COMMAND_GOTO=1
-uint8 COMMAND_HANDLE=2
-uint8 COMMAND_HOME=3
+std_msgs/Header header
 
-uint8 command          # GOTO=移动到位 / HANDLE=对该物料执行处理 / HOME=回原点（预留）
-int32 visit_index      # 第几次移动，1..12
-int32 slot_id          # 几何库位号 1..12（row1 从左到右为 1..4，见 warehouse_layout）
-int32 row              # 行 1..3
-int32 col              # 列 1..4
-string material_type   # "0".."4"；GOTO 任务恒为 "0"，HANDLE 任务为该位点识别结果
+uint8 slot_id          # 几何库位号 1..12（row1 从左到右为 1..4，见 warehouse_layout）
+uint8 visit_index      # 第几次移动，1..12
+uint8 row              # 行 1..3
+uint8 col              # 列 1..4
+uint8 material_type    # 0=未识别；1..4 为缺陷类型。GOTO 任务恒为 0
+
+string action          # "GOTO" / "HANDLE" / "HOME"
 string note            # 备注透传（决策侧的调试/播报信息，control 可忽略）
 ```
 
-注意 `material_type` 是**字符串**——与 vision 上行 string 同型，便于日志对照；
-control 解析时按 int 转一次即可（非法值决策侧已兜底，HANDLE 只会发 "1".."4"）。
+注意两个字段类型（**以 `src/plugins/aic_msgs/msg/MaterialTask.msg` 为准**）：
+`action` 是**字符串**（不是 `uint8 command`），`material_type` 是 **`uint8`**（不是字符串）。
+旧版本本节写的是反的，照旧文档实现 control 会直接对不上。
 
 ## 3. 决策侧已验证的任务流（自验脚本 logs/verify_*_tasks.csv）
 
 ```text
 visit 1..12：
   GOTO  (slot_id = 蛇形顺序 4,3,2,1,5,6,7,8,12,11,10,9)
-  HANDLE(同位点, material_type = "1".."4" 或超时跳过)
+  HANDLE(同位点, material_type = 1..4；超时位点不发 HANDLE)
 总计：GOTO 12 条 + HANDLE 10~12 条，全部为 fire-and-forget（不等待回执）
 ```
 

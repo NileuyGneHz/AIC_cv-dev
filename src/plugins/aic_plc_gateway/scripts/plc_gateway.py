@@ -448,6 +448,10 @@ class IoBackend:
         """把状态写到 PLC。values 的键必须在 TAG_ADDR 里。"""
         raise NotImplementedError
 
+    def can_write(self, tag):
+        """该标签能不能由网关写。Modbus 四张表都能写；RSC 要看标签表里的 dir。"""
+        return True
+
     def describe(self):
         return self.name
 
@@ -525,6 +529,13 @@ class RscBackend(IoBackend):
         # write_all 只写发生变化的标签（心跳每秒变，其余按需），省往返
         self.link.write_all(values)
 
+    def can_write(self, tag):
+        # dir=plc2gw 的变量归 PLC 所有，rsc_link.write_all 会直接跳过（见 rsc_link.py:428）。
+        # 也就是说 write({"CAM_REQ": 0}) 会「成功返回但什么都没写」——必须显式暴露出来，
+        # 否则上层会把「清请求位」当成已完成，实际上 PLC 侧的电平一直悬着。
+        spec = self.link.map.tags.get(tag)
+        return spec is not None and spec.direction in ("gw2plc", "both")
+
     def describe(self):
         mode = "干跑（内存假 PLC）" if self.link.dry_run else self.link.host
         return "rsc %s  标签表=%s" % (mode, self.map_path)
@@ -582,12 +593,14 @@ class PlcGateway(Node):
         self.actual = {"x": 0.0, "y": 0.0, "z": 0.0}
 
         self._last_cmd = 0
+        self._last_cam_req = False
         self._last_trigger = False
         self._last_attach = False
         self._last_detach = False
         self._last_reset = False
         self._self_pub_until = 0.0
         self._warned_observe = False
+        self._warned_unwritable = set()   # 已经提示过「这个位网关写不动」的标签
         self._hb = 0
         self._hb_t = _now()
 
@@ -741,31 +754,48 @@ class PlcGateway(Node):
         # 任务：先写 POS_SET 设定目标，再写 TASK_CMD 触发（PLC 的「设定值 + 执行位」）
         # Modbus 下网关把 TASK_CMD 清 0 作为应答；RSC 下该标签是 PLC 写的，写不动，
         # 需要 PLC 程序自己把 TASK_CMD 复位（否则只有边沿变化才会再次触发）。
+        # 坑：只有真执行了才应答。观察模式下 _exec_task 什么都不做，
+        # 若照样清 0 就是替真控制器「应答」掉一条没人执行的命令。
         if task_cmd and task_cmd != self._last_cmd:
-            self._exec_task(task_cmd, pos)
-            self.io.write({"TASK_CMD": 0})
+            if self._exec_task(task_cmd, pos):
+                self._ack("TASK_CMD")
         self._last_cmd = task_cmd
 
-        if cam_req and self.allow_control:
-            self.io.write({"CAM_REQ": 0})
-            self.trigger_pub.publish(Empty())
-            self.cam_state = CAM_BUSY
-            self.cam_t0 = _now()
-            self.get_logger().info("PLC 请求拍照 -> 已触发 vision")
+        # 拍照请求：只认上升沿。CAM_REQ 是 PLC 的电平信号，RSC 下它归 PLC 所有
+        # （dir=plc2gw），网关清不掉。若不判边沿，只要 PLC 让它保持 1，
+        # 每个 tick 都会重发触发、并把 cam_state 反复打回 BUSY ——
+        # PLC 永远等不到 DONE，现象是「刚识别完状态又变忙」。
+        if cam_req:
+            if not self.allow_control:
+                self.get_logger().warn(
+                    "PLC 置了 CAM_REQ，但网关在观察模式（allow_control=false），"
+                    "不会触发拍照；要由 PLC 主导请用 allow_control:=true",
+                    throttle_duration_sec=5.0)
+            elif not self._last_cam_req:
+                self.trigger_pub.publish(Empty())
+                self.cam_state = CAM_BUSY
+                self.cam_t0 = _now()
+                self._ack("CAM_REQ")
+                self.get_logger().info("PLC 请求拍照 -> 已触发 vision")
+        self._last_cam_req = cam_req
 
         if trig and not self._last_trigger:
-            self.trigger_pub.publish(Empty())
-            self.io.write({"COIL_TRIGGER": False})
+            if self.allow_control:
+                self.trigger_pub.publish(Empty())
+                self._ack("COIL_TRIGGER")
+            else:
+                self.get_logger().warn("观察模式忽略 COIL_TRIGGER",
+                                       throttle_duration_sec=5.0)
         self._last_trigger = trig
 
         if att and not self._last_attach:
-            self._exec_attach()
-            self.io.write({"COIL_ATTACH": False})
+            if self._exec_attach():
+                self._ack("COIL_ATTACH")
         self._last_attach = att
 
         if det and not self._last_detach:
-            self._exec_detach()
-            self.io.write({"COIL_DETACH": False})
+            if self._exec_detach():
+                self._ack("COIL_DETACH")
         self._last_detach = det
 
         if rst and not self._last_reset:
@@ -777,15 +807,38 @@ class PlcGateway(Node):
             self.task_state = TK_IDLE
             self.cam_state = CAM_IDLE
             self.cam_type = 0
-            self.io.write({"COIL_RESET": False})
+            if self.allow_control:
+                self._ack("COIL_RESET")
+            else:
+                self.get_logger().warn("观察模式忽略 COIL_RESET",
+                                       throttle_duration_sec=5.0)
             self.get_logger().info("PLC 复位")
         self._last_reset = rst
 
+    def _ack(self, tag):
+        """把 PLC 的请求位清 0。写不动就一次性说明白，别让它静默悬着。
+
+        坑：RSC 标签表里 CAM_REQ / COIL_* / TASK_CMD 全是 dir=plc2gw（归 PLC 所有），
+        rsc_link.write_all 会直接跳过这些标签——write() 正常返回，PLC 侧却没有任何变化。
+        这种后端下必须由 PLC 程序自己复位，否则该请求只有一次上升沿，
+        第二次请求永远等不到。
+        """
+        if not self.io.can_write(tag):
+            if tag not in self._warned_unwritable:
+                self._warned_unwritable.add(tag)
+                self.get_logger().warn(
+                    "%s 在当前后端归 PLC 所有（dir=plc2gw），网关清 0 无效；"
+                    "PLC 程序必须自己复位该位，否则同一请求只能触发一次" % tag)
+            return False
+        table, _ = TAG_ADDR[tag]
+        self.io.write({tag: 0 if table == "holding" else False})
+        return True
+
     def _exec_task(self, cmd, slot):
-        """PLC 动作：1=GOTO 2=HANDLE。"""
+        """PLC 动作：1=GOTO 2=HANDLE。返回 True = 真的下发了（可以应答 TASK_CMD）。"""
         if cmd not in (1, 2):
             self._set_err(ERR_NONE, "未知 TASK_CMD=%d，忽略" % cmd)
-            return
+            return False
         if not self.allow_control:
             if not self._warned_observe:
                 self.get_logger().warn(
@@ -793,17 +846,17 @@ class PlcGateway(Node):
                     "allow_control:=true（并停掉 bt_runner）" % cmd)
                 self._warned_observe = True
             self._set_err(ERR_OBSERVE, "观察模式不接受控制写入")
-            return
+            return False
         if not 1 <= slot <= self.n_mat:
             self._set_err(ERR_NO_SLOT, "Pos=%d 越界（应 1..%d）" % (slot, self.n_mat))
-            return
+            return False
         # HANDLE 必须带类型：控制器按 material_type 决定放进哪一列。
         # 不带（或 0）会走「未识别」快速分支——不动、不入架，但照样回 handled，
         # 于是 PLC 侧看到 TASK_STATE=DONE 却什么都没放进去（这个坑很隐蔽）。
         if cmd == 2 and self.cam_type not in (1, 2, 3, 4):
             self._set_err(ERR_NO_TYPE, "HANDLE 时无有效识别结果（CAM_DATA=%d）"
                           % self.cam_type)
-            return
+            return False
         if cmd == 1:                 # 新一轮上料：作废上一轮的识别结果
             self.cam_type = 0
             self.cam_state = CAM_IDLE
@@ -819,30 +872,35 @@ class PlcGateway(Node):
         self.task_pub.publish(msg)
         self.get_logger().info("PLC -> %s slot=%d type=%d"
                                % (msg.action, slot, msg.material_type))
+        return True
 
     def _exec_attach(self):
+        """返回 True = 真的执行了（可以应答 COIL_ATTACH）。"""
         if not self.allow_control:
             self.get_logger().warn("观察模式忽略 COIL_ATTACH", throttle_duration_sec=5.0)
-            return
+            return False
         if not 1 <= self.staged <= self.n_mat:
             self._set_err(ERR_NO_STAGED, "台面无料，无法吸附")
-            return
+            return False
         self.attach_pub[self.staged].publish(Empty())
         self.held = True
         self.axis_state = AX_MOVING
         self.get_logger().info("PLC -> attach material_%02d" % self.staged)
+        return True
 
     def _exec_detach(self):
+        """返回 True = 真的执行了（可以应答 COIL_DETACH）。"""
         if not self.allow_control:
             self.get_logger().warn("观察模式忽略 COIL_DETACH", throttle_duration_sec=5.0)
-            return
+            return False
         if not 1 <= self.staged <= self.n_mat:
             self._set_err(ERR_NO_STAGED, "台面无料，无法释放")
-            return
+            return False
         self.detach_pub[self.staged].publish(Empty())
         self.held = False
         self.axis_state = AX_MOVING
         self.get_logger().info("PLC -> detach material_%02d" % self.staged)
+        return True
 
     def _publish_status(self):
         now = _now()

@@ -92,10 +92,18 @@ class VisionTradNode(Node):
         self._frame_rx = time.monotonic()
 
     def _on_trigger(self, _msg):
+        now = time.monotonic()
+        # 去抖：上一条结果刚发出又来触发 = 同一次到位的重复请求（龙门到位与 PLC 各发一次）。
+        # 这里显式忽略并留日志；不要把判断放到 _process 里 —— 那样请求会被消费掉却不发布，
+        # 契约上等于「丢单」，现场也看不出是重复触发而不是识别失败。
+        if now - self._last_pub < self.debounce_s:
+            self.get_logger().info(
+                "[vision] 重复触发（距上次结果 {:.0f} ms < {:.0f} ms），忽略本次".format(
+                    (now - self._last_pub) * 1000.0, self.debounce_s * 1000.0))
+            return
         if self._deadline is not None:
             self.get_logger().warn("[vision] 上一次请求未处理完，忽略本次")
             return
-        now = time.monotonic()
         self._deadline = now + self.frame_wait_s
         # 坑：到位那一刻相机正在停稳，第一帧常常还是「运动中」的画面（实测偏移一整个库位）。
         #     直接拿它识别会稳定失败，所以跳过 settle_skip_s 内到达的帧，之后持续重试到超时。
@@ -140,9 +148,7 @@ class VisionTradNode(Node):
             self._deadline = None
 
     def _process(self):
-        """尝试识别当前帧。返回 True = 本轮结束（已发布或处于去抖窗口）。"""
-        if time.monotonic() - self._last_pub < self.debounce_s:
-            return True
+        """尝试识别当前帧。返回 True = 本轮结束（已发布结果）。"""
         res = detect(self._frame, self.det)
         if res is None:
             self.get_logger().warn("[vision] 本帧未定位到铁片，等下一帧重试")

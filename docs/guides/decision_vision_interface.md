@@ -8,9 +8,10 @@
 | 方向 | 话题 | 类型 | QoS | 说明 |
 |---|---|---|---|---|
 | vision → decision | `/vision/material_type` | `std_msgs/String` | reliable + volatile，深度 10（双方默认即可互通） | 每个位点一次识别结果 |
-| decision → vision（可选） | `/vision/trigger` | `std_msgs/Empty` | 默认 | 采集请求。**当前决策侧未启用**（`enable_trigger=false`）；vision 若为「来图即识别」模式可忽略 |
+| decision → vision（可选） | `/vision/trigger` | `std_msgs/Empty` | 默认 | 采集请求。**当前决策侧未启用**（`vision_trigger_enable=false`）；vision 若为「来图即识别」模式可忽略 |
 
-参数化入口：`aic_decision_params.yaml` 的 `vision.topic` / `vision.trigger_topic` / `vision.enable_trigger`。
+参数化入口：`aic_decision_params.yaml` 的 `vision_topic` / `vision_trigger_topic` / `vision_trigger_enable`
+（参数名就是这个下划线形式，没有 `vision.` 这种分组前缀）。
 
 ## 2. 消息语义
 

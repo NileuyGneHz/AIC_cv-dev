@@ -55,7 +55,7 @@ int main(int argc, char ** argv)
   const bool vision_trigger_enable =
     node->declare_parameter<bool>("vision_trigger_enable", false);
   const std::string vision_trigger_topic =
-    node->declare_parameter<std::string>("vision_trigger_topic", "/vision/capture");
+    node->declare_parameter<std::string>("vision_trigger_topic", "/vision/trigger");
   const double vision_timeout_s =
     node->declare_parameter<double>("vision_timeout_s", 3.0);
   const std::string control_task_topic =
