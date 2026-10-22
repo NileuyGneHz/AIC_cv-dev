@@ -1,0 +1,15 @@
+# -*- coding: utf-8 -*-
+# 真机容器依赖（arm64 / RK3568）
+#
+# 与 requirements-plc.txt 的区别：
+#   - Windows 侧只跑 rsc_link 自检，所以只要 PyYAML；
+#   - 容器里要跑视觉（cv2 + numpy），所以多两个包；
+#   - 一律 headless 版 OpenCV：容器里没有 X11，装了 GUI 版也 import 不了。
+#
+# 坑：arm64 轮子要真存在。x86 上 `pip download` 下来的是 x86 wheel，
+#     拿到 RK3568 上会报 "not a supported wheel on this platform"。
+#     正确做法是在设备上装，或 `pip download --platform manylinux2014_aarch64`。
+
+numpy>=1.24,<3
+opencv-python-headless>=4.8,<5
+PyYAML>=6.0,<7
