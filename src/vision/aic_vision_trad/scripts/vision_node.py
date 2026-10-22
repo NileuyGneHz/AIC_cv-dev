@@ -119,7 +119,9 @@ class VisionTradNode(Node):
             if now < self._deadline:
                 return
             self.get_logger().warn(
-                "[vision] {:.2f}s 内没有等到可用新帧，本次不发结果".format(self.frame_wait_s))
+                "[vision] {:.2f}s 内没有等到可用新帧，本次不发结果"
+                "（相机帧率过低：查 gz_camera_bridge / RTF；若开着 Gazebo GUI，"
+                "见 README「GUI 不应与服务端同进程」）".format(self.frame_wait_s))
             if self.debug_dir and self._frame is not None:
                 self._dump_fail("nofresh")
             self._deadline = None

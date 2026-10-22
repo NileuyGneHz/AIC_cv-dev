@@ -77,8 +77,17 @@ ros2 launch aic_dashboard dashboard.launch.py vision_backend:=trad gui:=true
 ```
 
 随后应出现：Gazebo 窗口（场景）、启动终端（日志）、浏览器 <http://127.0.0.1:8080>（看板）。
+**GUI 窗口会晚 3–5 s 才出来**——它是独立客户端，要先等仿真服务端把 `/world/` 发布出来。
 另开一个终端 `ros2 node list`，应看到 6 个节点：`gz_bridge`、`gz_camera_bridge`、
 `gantry_controller`、`vision_trad_node`、`aic_decision_bt`、`aic_score_node`。
+
+> **为什么 GUI 要单独起（2026-10-22 修的一个重要坑）**
+> 旧写法 `ign gazebo -r world.sdf` 把服务端和 GUI 塞进同一个进程，**相机传感器与 GUI 视口
+> 共用同一个渲染线程**。人盯着浏览器看板时，Gazebo 窗口被挡在后面（或最小化/失焦），
+> 那一路渲染被节流 → `/camera/image` 的帧又稀又不规律 → 看板上画面一抽一抽、
+> 视觉 1.2 s 内等不到新帧 → 每个位点都 TIMEOUT → **判分格几乎全红**。
+> 现在服务端永远 `-s --headless-rendering`，GUI 只用 `ign gazebo -g` 连过来，
+> 画得慢或被遮挡都不再影响相机。细节见 `docs/guides/simulation_guide.md` 坑 30。
 
 > **坑：不要再另开终端跑 `./scripts/run_sim.sh --gui`。** 看板这条命令**已经包含仿真**，
 > 两个仿真实例会抢同一批关节指令——RTF 掉到 1/10、「到位超时 8.0 s」、
@@ -102,6 +111,9 @@ ros2 launch aic_dashboard dashboard.launch.py vision_backend:=trad gui:=true
 **3. 收尾与排障**
 
 - 正常收尾：`once:=true` 跑完自动关；中途停直接在启动终端 Ctrl-C。
+- **判分格几乎全红**：先在日志里搜「没有等到可用新帧」。命中说明相机掉帧（不是判据错），
+  按坑 30 检查 GUI 是否被遮挡/最小化；`gui:=false` 跑一遍若恢复 12/12，即可确认。
+  没有这条告警才是真误判，去查 `[vision] 判定 …` 的特征值与 `defect_classifier.py` 阈值。
 - 卡住 / 怀疑双实例：`source scripts/lib/sim_cleanup.sh && sim_kill_stale`
   （坑：`pkill -f gzserver` 在 Fortress 上匹配不到进程，进程名是 `ign gazebo`）。
 - 权威自验（约 100 s，含 12 行全 OK + 夹持/释放各 12 次 + 落位 4 mm 核对）：

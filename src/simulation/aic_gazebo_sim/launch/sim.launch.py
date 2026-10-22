@@ -26,7 +26,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (DeclareLaunchArgument, ExecuteProcess, LogInfo,
                             SetEnvironmentVariable)
-from launch.conditions import IfCondition, LaunchConfigurationEquals, UnlessCondition
+from launch.conditions import IfCondition, LaunchConfigurationEquals
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -98,9 +98,26 @@ def generate_launch_description():
         cands = glob.glob("/usr/lib/x86_64-linux-gnu/ign-physics-*/engine-plugins")
         physics_engine_path = cands[0] if cands else ""
 
-    gz_headless_cmd = ["ign", "gazebo", "-s", "-r", "--headless-rendering",
-                       "-v", verbose, world_path]
-    gz_gui_cmd = ["ign", "gazebo", "-r", "-v", verbose, world_path]
+    # 服务端始终无头渲染（EGL），GUI 只作为**独立客户端**连过来（`ign gazebo -g`）。
+    #
+    # 坑（必须分离，不能写成 `ign gazebo -r world.sdf` 一条命令）：
+    #   把服务端和 GUI 放同一个进程时，相机传感器和 GUI 视口**共用同一个渲染线程**。
+    #   GUI 窗口被浏览器挡在后面（人正盯着看板）、最小化或失去焦点时，那一路渲染会被
+    #   节流甚至停掉，于是 /camera/image 的帧变得又稀又不规律：
+    #     - 看板上表现为画面一抽一抽（就是"圆盘在抽动"）；
+    #     - 视觉侧表现为 1.2 s 内等不到新帧 -> 不发结果 -> 该位点 TIMEOUT -> 判分格全红。
+    #   拆成两个进程后，传感器渲染不再受 GUI 可见性影响；GUI 只从 SceneBroadcaster
+    #   收场景状态画图，画得慢一点也不会波及相机。
+    gz_server_cmd = ["ign", "gazebo", "-s", "-r", "--headless-rendering",
+                     "-v", verbose, world_path]
+    # GUI 客户端：先等服务端把 /world/ 服务发布出来（实测约 3 s）再连，
+    # 避免起太早连到空场景。最多等 30 s，等不到也照样起（现场便于看出问题）。
+    gz_gui_cmd = ["sh", "-c",
+                  'for i in $(seq 1 30); do '
+                  'ign service -l 2>/dev/null | grep -q "/world/" && break; '
+                  'sleep 1; done; '
+                  'exec ign gazebo -g -v "$1"', "sh", verbose]
+    server_proc = ExecuteProcess(cmd=gz_server_cmd, output="screen", name="gzserver")
 
     return LaunchDescription([
         DeclareLaunchArgument("gui", default_value="false",
@@ -129,9 +146,9 @@ def generate_launch_description():
         LogInfo(msg=["[sim] world = ", world_path]),
         LogInfo(msg=["[sim] models = ", models_path]),
 
-        # 仿真服务端：无 GUI 时用 EGL 无头渲染（相机仍然出图）
-        ExecuteProcess(cmd=gz_headless_cmd, output="screen",
-                       condition=UnlessCondition(gui), name="gzserver"),
+        # 仿真服务端：始终无头渲染（相机走 EGL，与 GUI 解耦）
+        server_proc,
+        # GUI 只作为客户端连过来：画得慢、被遮挡，都不影响相机出图
         ExecuteProcess(cmd=gz_gui_cmd, output="screen",
                        condition=IfCondition(gui), name="gz_gui"),
 
