@@ -78,10 +78,13 @@ AIC_cv-dev/
 │   ├── decision/ aic_warehouse · aic_behavior_tree
 │   ├── simulation/ aic_gazebo_sim
 │   └── vision/   aic_vision_trad
-├── scripts/                       构建 / 运行 / 自验 / PLC 测试
-├── config/  data/  docker/  tools/ 配置、样本、镜像、开发工具
+├── scripts/                       构建 / 运行 / 自验 / PLC 测试 / 提交物打包
+├── deploy/vplc/                   真机算法镜像（arm64 Dockerfile + requirements）
 └── logs/                          运行产物（不入 git）
 ```
+
+> 根目录不留 `config/` `data/` `docker/` `tools/` 这类空占位（2026-10-22 已清）；
+> 需要样本数据 / 标定 / 镜像时再建，建了就放真东西进去。
 
 **后续要加的包**（按需创建，不要提前建空目录）：
 

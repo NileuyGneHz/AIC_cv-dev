@@ -87,14 +87,16 @@ docs/
 ├── adr/                             选型记录（BT.CPP / PLC 契约）
 └── competition/                     技术文档 PPT、平台对标清单与素材
 
-scripts/                              构建 / 运行 / 自验 / PLC 测试入口
-config/  data/  docker/  tools/        配置、样本、镜像、开发工具
+scripts/                              构建 / 运行 / 自验 / PLC 测试 / 提交物打包
+deploy/vplc/                          真机算法镜像（arm64）
 logs/                                 所有运行产物（不入 git）
 ```
 
-**后续扩展位不建空目录。** 真要加包时按 `src/<域>/<包名>` 新建并带 `package.xml`；
+**空目录一律不留。** 真要加包时按 `src/<域>/<包名>` 新建并带 `package.xml`；
 只有 `.gitkeep` 的目录既不能被 colcon 构建，又会让人误以为已有实现
-（2026-10-21 已清理 8 个此类占位）。
+（2026-10-21 已清理 `src/` 下 8 个占位，2026-10-22 清掉根目录
+`config/` `data/` `docker/` `tools/` 4 组共 7 个）。规划写在
+`AGENTS.md` §5 的「后续要加的包」表里。
 
 ## 常用入口
 

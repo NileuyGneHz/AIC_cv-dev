@@ -4,6 +4,11 @@ install/
 log/
 logs/
 
+# === 省赛提交物目录：只留图集与清单，zip/PPT 是派生产物（见 submission/README.md）===
+docs/competition/submission/*.zip
+docs/competition/submission/*.pptx
+docs/competition/submission/*.mp4
+
 # === 工作区临时目录 ===
 .buildcache/
 .scratch/
@@ -12,13 +17,7 @@ logs/
 # === AI 助手本地状态（不进仓库）===
 .workbuddy/
 
-# === 大文件：数据集 / 模型权重 / 视频（AGENTS.md 硬约束 4）===
-data/datasets/*
-!data/datasets/.gitkeep
-data/samples/*
-!data/samples/.gitkeep
-data/results/*
-!data/results/.gitkeep
+# === 大文件：视频 / 模型权重（AGENTS.md 硬约束 4）===
 *.mp4
 *.avi
 *.mkv
