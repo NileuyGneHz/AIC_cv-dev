@@ -61,6 +61,7 @@ docs/
 ├── guides/plc_integration.md        PLC 集成指南（寄存器表、握手、排障）
 ├── guides/plcnext_rsc_setup.md      RSC 标签映射与现场联调五步
 ├── guides/vplc_deployment.md        VC 版接入：版本表、arm64 镜像、podman 部署
+├── guides/competition_host.md       比赛上位机（Ubuntu）改造清单与风险
 ├── guides/obs_recording_playbook.md 省赛视频录制（OBS）
 ├── guides/decision_*.md             三份接口契约
 ├── plc/main.st                      PLC 侧巡视状态机骨架（ST）

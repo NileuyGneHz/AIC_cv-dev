@@ -4,7 +4,8 @@
 > 依据：`Downloads/VC算法封装和部署（VC和EPC区别）-使用指导.pdf`（2026/10）、
 > `Downloads/VC程序下载及RSC通信-使用指导.pdf`（2026/10）、
 > `Downloads/大赛设备(vc版)操作指导手册_2026.10.20.pdf`（2026.Q3.V1）
-> 关系：`plcnext_rsc_setup.md` 讲「我们的标签表怎么映射」，本文讲「东西怎么装进 vPLC」。
+> 关系：`plcnext_rsc_setup.md` 讲「我们的标签表怎么映射」，本文讲「东西怎么装进 vPLC」；
+> 上位机（Ubuntu）侧要改什么见 `competition_host.md`。
 
 ---
 
