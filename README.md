@@ -17,7 +17,20 @@
 | 真机执行机构 | 未接 | 需串口/CAN 驱动替换 `gantry_controller` 的执行层 |
 | 海康相机 | 未接 | 需相机或 aarch64 版 MVS SDK |
 | PLCnext vPLC 现场联调 | 未做 | 本机无 vPLC；版本与部署见 `docs/guides/vplc_deployment.md`，标签映射见 `plcnext_rsc_setup.md` |
-| vPLC 算法镜像（arm64） | 未做 | 需 `deploy/vplc/`（Dockerfile + `run_to_plc.py`），依赖真机探明官方 `Cam` 变量路径 |
+| vPLC 算法镜像（arm64） | 已就绪未构建 | `deploy/vplc/`（Dockerfile + requirements + 手册）与无 ROS 入口 `run_to_plc.py` 已落地；需在有设备的环境 `podman build` 并探明官方 `Cam` 变量路径 |
+
+## 省赛提交状态（截止 2026-11-02）
+
+| 提交项 | 状态 | 说明 |
+|---|---|---|
+| 参赛承诺书 | **已提交**（2026-10-22 确认） | 全员手写签字版 |
+| 技术文档（PPT） | 已完成 | `docs/competition/AIC视觉分拣技术文档/`，13 页，pptx + pdf |
+| 程序源代码 | 就绪待打包 | 仓库即源码；需按提交规范导出 zip（排除 `logs/`、缓存、大文件） |
+| 竞赛任务完成视频 | 未录 | 看板窗口一镜到底，约 80–100 s，1080P；步骤见 `docs/guides/obs_recording_playbook.md` |
+| 参赛视频（固定机位） | 未录 | 手机/相机固定三脚架拍选手 + 屏幕全景 |
+| 视觉识别图集 | 半成品 | 底图 `docs/guides/assets/vision_atlas.png`（`make_atlas.py` 可重生成）；未整理为单独立项的提交版 |
+
+行动清单与录像硬要求见 `docs/competition/platform_and_video_checklist.md`。
 
 ## 快速开始
 
@@ -52,7 +65,9 @@ src/                                 7 个可构建包，没有只放 .gitkeep �
 ├── decision/aic_warehouse/          3x4 货架模型：蛇形顺序生成 + gtest
 ├── decision/aic_behavior_tree/      决策核心：VisionClient / ControlBridge / 8 节点 / bt_runner
 ├── simulation/aic_gazebo_sim/       场景生成 + 龙门控制 + 视觉桩 + 抓帧/快照工具
-└── vision/aic_vision_trad/          传统视觉：盘面定位 + 四类缺陷判据
+└── vision/aic_vision_trad/          传统视觉：盘面定位 + 四类缺陷判据 + run_to_plc.py（真机无 ROS 入口）
+
+deploy/vplc/                          真机算法镜像：arm64 Dockerfile + requirements + 部署手册
 
 docs/
 ├── guides/acceptance_manual.md      验收手册（五级阶梯 + 实测基线 + 排障）
@@ -63,11 +78,14 @@ docs/
 ├── guides/vplc_deployment.md        VC 版接入：版本表、arm64 镜像、podman 部署
 ├── guides/competition_host.md       比赛上位机（Ubuntu）改造清单与风险
 ├── guides/windows_plc_handover.md   Windows 侧 PLC 开发交接（环境/自检/待办/坑）
+├── guides/handover_ubuntu.md        Windows → Ubuntu 仿真交接
+├── guides/vn_mock_design.md         VirtualNext mock 平台设计（协议层）
 ├── guides/obs_recording_playbook.md 省赛视频录制（OBS）
 ├── guides/decision_*.md             三份接口契约
 ├── plc/main.st                      PLC 侧巡视状态机骨架（ST）
+├── plc/windows_dev_notes.md         Windows 环境实测记录（pip 镜像 / git refs 异常）
 ├── adr/                             选型记录（BT.CPP / PLC 契约）
-└── competition/                     技术文档 PPT 与素材
+└── competition/                     技术文档 PPT、平台对标清单与素材
 
 scripts/                              构建 / 运行 / 自验 / PLC 测试入口
 config/  data/  docker/  tools/        配置、样本、镜像、开发工具
