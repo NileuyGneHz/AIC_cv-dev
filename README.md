@@ -55,6 +55,59 @@ ros2 launch aic_dashboard dashboard.launch.py vision_backend:=trad
 验收判据、逐级耗时与排障顺序见 **`docs/guides/acceptance_manual.md`**——想知道
 「现在到底好不好、坏了先看哪里」，只看那一份就够。
 
+## 省赛快速检验（Gazebo GUI + 判分看板）
+
+> 目标：一条命令起齐「Gazebo 窗口 + 真视觉 + 决策 + 判分看板」，
+> 浏览器看比分，30 秒判断链路好不好。整轮约 145 s（12 块料），跑完自动退出。
+
+**0. 前置（只做一次）**
+
+```bash
+cd ~/AIC_cv-dev
+./scripts/build.sh          # 编译；没有 install/ 后面全都起不来
+```
+
+**1. 起齐全部（一条命令，不要拆成两条）**
+
+```bash
+source /opt/ros/humble/setup.bash && source install/setup.bash
+export PATH=/usr/bin:$PATH     # 坑：不设这条，视觉节点会因 python3 缺 cv2 起不来，
+                              #      表现为「等待视觉结果超时」而不是导入报错
+ros2 launch aic_dashboard dashboard.launch.py vision_backend:=trad gui:=true
+```
+
+随后应出现：Gazebo 窗口（场景）、启动终端（日志）、浏览器 <http://127.0.0.1:8080>（看板）。
+另开一个终端 `ros2 node list`，应看到 6 个节点：`gz_bridge`、`gz_camera_bridge`、
+`gantry_controller`、`vision_trad_node`、`aic_decision_bt`、`aic_score_node`。
+
+> **坑：不要再另开终端跑 `./scripts/run_sim.sh --gui`。** 看板这条命令**已经包含仿真**，
+> 两个仿真实例会抢同一批关节指令——RTF 掉到 1/10、「到位超时 8.0 s」、
+> 单轮从 10 s 变 36 s，而两边都显示正常。「GUI + 看板」只用这一条命令；
+> 只想跑仿真、不要看板时，才用 `./scripts/run_sim.sh --gui`。
+> `gui:=true` 需要本机有图形会话（远程 SSH 加 `-X` 能出窗口但很卡）。
+
+**2. 看什么（30 秒判定）**
+
+| 看哪 | 正常 | 异常意味着 |
+|---|---|---|
+| Gazebo 窗口 | 来料架 3×4 铺满 12 块料；龙门逐块「上料→拍照→吸取→码放」；货架 12 格被填满 | 时钟在走但物体不动 → 物理引擎插件没加载（launch 已显式补路径，重起即可） |
+| 看板库位格 | 每放入一格变绿；最终 12 格全绿、比分 12 / 0、事件流水无 TIMEOUT | 出现红/琥珀 → 识别失败或超时，看流水里对应位点 |
+| 终端日志 | 每轮一条 `[vision] 判定 …（r=…px）`；无 Traceback | 视觉节点没起 → 回到第 1 步的 `export PATH` |
+| 耗时 | 整轮约 145 s，跑完自动退出（`once:=true` 默认） | 超过 4 分钟 → 机器慢或 RTF 掉，先 `sim_kill_stale` 再重跑 |
+
+常用变体：`once:=false auto_restart:=true` 常驻多轮（Ctrl-C 结束）；
+`vision_backend:=gt` 换真值桩（排除视觉因素，定位控制/物理问题）；
+`--domain auto` 式隔离见 `scripts/run_sim.sh`（同机跑两套仿真时必加）。
+
+**3. 收尾与排障**
+
+- 正常收尾：`once:=true` 跑完自动关；中途停直接在启动终端 Ctrl-C。
+- 卡住 / 怀疑双实例：`source scripts/lib/sim_cleanup.sh && sim_kill_stale`
+  （坑：`pkill -f gzserver` 在 Fortress 上匹配不到进程，进程名是 `ign gazebo`）。
+- 权威自验（约 100 s，含 12 行全 OK + 夹持/释放各 12 次 + 落位 4 mm 核对）：
+  `./scripts/verify_sim_m2.sh --domain auto`。
+- 想录省赛视频：`docs/guides/obs_recording_playbook.md`（OBS 参数 + 分镜 + 双机位）。
+
 ## 目录
 
 ```text
