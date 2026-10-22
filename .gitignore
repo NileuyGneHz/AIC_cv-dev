@@ -37,6 +37,8 @@ __pycache__/
 *.o
 *.a
 *.gch
+# Windows 侧 venv（交接文档 §2：py -3.10 -m venv .venv）
+.venv/
 
 # === 编辑器 / IDE ===
 .vscode/
