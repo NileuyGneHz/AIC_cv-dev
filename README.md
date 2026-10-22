@@ -16,7 +16,8 @@
 | PLC 网关 | 完成（Modbus 已实测 / RSC 干跑） | `aic_plc_gateway`；接管整轮 12/12、约 130 s |
 | 真机执行机构 | 未接 | 需串口/CAN 驱动替换 `gantry_controller` 的执行层 |
 | 海康相机 | 未接 | 需相机或 aarch64 版 MVS SDK |
-| PLCnext vPLC 现场联调 | 未做 | 本机无 vPLC；步骤见 `docs/guides/plcnext_rsc_setup.md` |
+| PLCnext vPLC 现场联调 | 未做 | 本机无 vPLC；版本与部署见 `docs/guides/vplc_deployment.md`，标签映射见 `plcnext_rsc_setup.md` |
+| vPLC 算法镜像（arm64） | 未做 | 需 `deploy/vplc/`（Dockerfile + `run_to_plc.py`），依赖真机探明官方 `Cam` 变量路径 |
 
 ## 快速开始
 
@@ -58,7 +59,8 @@ docs/
 ├── guides/simulation_manual.md      仿真操作手册（参数、模式、产物）
 ├── guides/simulation_guide.md       原理与 29 个坑（改仿真前必读）
 ├── guides/plc_integration.md        PLC 集成指南（寄存器表、握手、排障）
-├── guides/plcnext_rsc_setup.md      vPLC 现场联调五步
+├── guides/plcnext_rsc_setup.md      RSC 标签映射与现场联调五步
+├── guides/vplc_deployment.md        VC 版接入：版本表、arm64 镜像、podman 部署
 ├── guides/obs_recording_playbook.md 省赛视频录制（OBS）
 ├── guides/decision_*.md             三份接口契约
 ├── plc/main.st                      PLC 侧巡视状态机骨架（ST）

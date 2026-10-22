@@ -1,7 +1,8 @@
 # PLCnext RSC 接入手册（算法侧 ↔ vPLC）
 
-> 版本：2026-10-21 首版
+> 版本：2026-10-21 首版（2026-10-22 校正 vPLC 凭据与版本）
 > 适用：`src/plugins/aic_plc_gateway/` 的 RSC 传输层（`rsc_link.py` + `config/plc_rsc_map*.yaml`）
+> **VC 版设备先读**：`vplc_deployment.md`（镜像 arm64、Python 3.10、官方 `Cam` 结构体、部署五步）
 > 前置阅读：`plc_integration.md`（变量语义与 Modbus 映射表，本文不重复）
 > 本文补上两份 YAML 里指向的 `docs/guides/plcnext_rsc_setup.md`（此前是悬空引用）。
 
@@ -29,7 +30,7 @@ PLC 变量树 --/                                    \-- IEC 61131-3 程序（�
 | RSC 端口 | `41100` | `PyPlcnextRsc/common/device.py:161` 默认值 |
 | 传输加密 | `useTls=True` | `device.py` `ExtraConfigure` 默认开；PLC 侧关了会握手失败 |
 | 保活 | `keepAlive_ms=30000` | 同上 |
-| 认证 | 用户名 `admin`，密码 = **设备机身密码** | demo `main.py:28`；不是网页登录的 `plcnext` |
+| 认证 | vPLC：`admin` / **`plcnext`**；EPC：`admin` / 机身密码 | 部署指导 p2、设备手册 5.3；demo `main.py:28` 的 `381d3976` 是 EPC 机身密码 |
 | 变量路径 | `Arp.Plc.Eclr/<POU>.<变量>[.<字段>]` | demo `main.py:36` 用的是 `Arp.Plc.Eclr/imageClassify.image_result` |
 | POU 名 | 本项目假设 `Main`，**待现场确认** | demo 里官方工程叫 `imageClassify`，两者不同名 |
 
@@ -148,8 +149,8 @@ PLC 的请求就会被吞掉。规则是：**整块只读 + 逐字段写**，或
 ```bash
 # 0) 环境：必须 python3.10（PyPlcnextRsc 0.1.12 用了 3.11 已删的 enum._decompose）
 /usr/bin/python3 --version        # 期望 3.10.x
-export PLCNEXT_HOST=192.168.3.99
-export PLCNEXT_PASSWORD='<机身密码>'
+export PLCNEXT_HOST=192.168.3.99        # vPLC 对外 IP；容器内改成 10.88.0.2
+export PLCNEXT_PASSWORD='plcnext'       # vPLC 固定 admin/plcnext；EPC 才是机身密码
 
 # 1) 不连 PLC，先验标签表本身
 /usr/bin/python3 src/plugins/aic_plc_gateway/scripts/rsc_link.py --describe
@@ -228,7 +229,8 @@ wheel 是纯 Python，可直接加进 `sys.path` 当 zip 导入，**不需要 pi
 ## 8. 待确认清单（现场问清楚再动手）
 
 - [ ] PLC 工程里的 POU 名到底是 `Main` 还是别的？变量是全局 GVL 还是程序内局部？
-- [ ] 用户认证开了没有？机身密码是多少？（网页登录密码不是这个）
+- [ ] 连的是 VC 还是 EPC？VC 固定 `admin/plcnext`，EPC 才用机身密码
+- [ ] 官方工程里 `Cam` 类型的实例名是不是 `Camera`？POU 名是什么？（决定 RSC 路径）
 - [ ] 41100 端口是否被防火墙挡？容器内是否必须走 `10.88.0.2`？
 - [ ] RSC 的 TLS 是否开启（默认开）？PLC 侧证书是自签还是关闭校验？
 - [ ] 三轴到底是 PLC 侧闭环还是算法侧给目标位？（决定 `Axis.*` 是反馈还是指令）
