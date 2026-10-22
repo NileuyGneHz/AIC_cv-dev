@@ -147,3 +147,41 @@ podman inspect aic-vision:1.0 --format '{{.Architecture}}'   # 必须是 arm64
 - [ ] 遮住镜头：`Data=100`、`ErrCode≠0`
 - [ ] 拔网线 10 s 再插回，30 s 内自动重连（`rsc_link` 退避 2→10 s）
 - [ ] 整轮 12 块全部入架，eHMI 计数与物理位置一致
+
+---
+
+## 7. 双系统怎么分工（Windows / Ubuntu）
+
+结论：**不要整体迁到 Windows。** 这个仓库有两半，恰好一半一半：
+
+| 工作 | Windows 原生 | Ubuntu | 说明 |
+|---|---|---|---|
+| PLCnext Engineer 2026.3 | 可以 | 不行 | 官方只发 Windows 包 |
+| MVS 调相机 | 可以 | 不行 | 官方 V4.4.0 是 Windows 软件 |
+| 构建 arm64 算法镜像 | 可以 | 可以 | Windows 用 Docker Desktop（官方流程），Ubuntu 用 podman+buildx |
+| `run_to_plc.py` 连 vPLC | 可以 | 可以 | 纯 Python + socket，无 POSIX 依赖 |
+| Modbus 网关 / 主站 demo | 可以 | 可以 | 只用 `socket`，没有 `fcntl`/`termios` |
+| 视觉离线跑图 / 调阈值 | 可以 | 可以 | OpenCV + numpy |
+| 文档 / PPT / 录制 | 更顺 | 可以 | Office、OBS 都在 Windows 更成熟 |
+| ROS 2 + Gazebo 仿真 | 基本不行 | 可以 | Fortress 没有 Windows 原生支持 |
+| `scripts/*.sh` 验收 | 不行 | 可以 | 20 处依赖 `pkill`/`pgrep`/`/proc` |
+
+建议分工：
+
+- **Windows**：`deploy/vplc/`、`cam_official.yaml`、`run_to_plc.py` 的本机调试、
+  PLCnext Engineer、MVS、PPT 与录制。
+- **Ubuntu**：ROS 2 + Gazebo、行为树、L1–L5 验收、`verify_all.sh`。
+
+两条硬规矩：
+
+1. **仓库各克隆一份，用 GitHub 同步**，不要在 Windows 的 `/mnt/c` 或 NTFS 盘里
+   `colcon build`——9p 文件系统慢，权限位和符号链接也会丢。
+2. **`.sh` 必须保持 LF**。仓库已加 `.gitattributes` 强制；Windows 侧不要用
+   “记事本另存为”改脚本，否则 bash 会报 `\r: command not found`。
+
+Python 版本：Windows 侧装 **3.10**（`py -3.10`），不要用 3.13；
+`PyPlcnextRsc` 在 3.11+ 导入即崩。脚本里的 `/usr/bin/python3` 是 Ubuntu 路径，
+Windows 上换成 `py -3.10` 即可。
+
+WSL2 只能当备选：ROS 2 能跑，但 Gazebo GUI 走 D3D12 经常花屏/掉帧，
+USB 相机直通也麻烦。真要跑仿真，回 Ubuntu 双系统启动。
