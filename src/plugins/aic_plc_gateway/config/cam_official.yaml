@@ -1,0 +1,50 @@
+# 官方 Cam 契约标签表（真机 vPLC 用）
+#
+# 来源：设备手册 2026.Q3.V1 §3.1 p18（交接文档 §7 照抄）
+#
+#   Cam : STRUCT
+#       CommOK  : BOOL;   // 通讯OK
+#       Ready   : BOOL;   // 相机准备好
+#       Start   : BOOL;   // 拍照启动      （PLC 写）
+#       Done    : BOOL;   // 拍照完成      （算法写）
+#       Reset   : BOOL;   // 相机复位      （PLC 写）
+#       Prog    : INT;    // 相机程序号    （PLC 写）
+#       ErrCode : WORD;   // 错误代码      （算法写）
+#       Data    : INT;    // 拍照结果 100=失败（算法写）
+#   END_STRUCT
+#
+# 与 plc_rsc_map.yaml 的分工（别混用）：
+#   - plc_rsc_map.yaml     ：仿真用「自创 5 字段 Camera」+ 三轴/货架/诊断，接 plc_gateway.py
+#   - cam_official.yaml    ：真机用「官方 8 字段 Cam」，接 run_to_plc.py（无 ROS）
+#
+# 现场只改 program 一行（POU 名）：Main / PLC_PRG / imageClassify 由 PLCnext Engineer 确认。
+# 路径前缀、实例名「Camera」不要改（官方契约）。
+
+program: Main
+prefix: "Arp.Plc.Eclr/"
+structs: []
+
+tags:
+  # ---- PLC → 算法 ----
+  - {tag: CAM_START,   path: "{program}.Camera.Start",   type: BOOL, dir: plc2gw,
+     note: "拍照启动；算法取到上升沿后开始采集"}
+  - {tag: CAM_RESET,   path: "{program}.Camera.Reset",   type: BOOL, dir: plc2gw,
+     note: "相机复位；算法收到后清 Done/ErrCode"}
+  - {tag: CAM_PROG,    path: "{program}.Camera.Prog",    type: INT,  dir: plc2gw,
+     note: "相机程序号（算法侧暂未使用，透传记录）"}
+
+  # ---- 算法 → PLC ----
+  - {tag: CAM_COMM_OK, path: "{program}.Camera.CommOK",  type: BOOL, dir: gw2plc,
+     note: "通讯正常；算法连上并跑通一轮后置 TRUE"}
+  - {tag: CAM_READY,   path: "{program}.Camera.Ready",   type: BOOL, dir: gw2plc,
+     note: "算法就绪（模型/相机初始化完成，可以接收 Start）"}
+  - {tag: CAM_DONE,    path: "{program}.Camera.Done",    type: BOOL, dir: gw2plc,
+     note: "本次拍照+识别完成；PLC 在 Reset 后要求算法清掉"}
+  - {tag: CAM_ERRCODE, path: "{program}.Camera.ErrCode", type: WORD, dir: gw2plc,
+     note: "0=无错 1=取图失败 2=定位失败 3=判据无候选 4=写 PLC 失败 5=超时"}
+  - {tag: CAM_DATA,    path: "{program}.Camera.Data",    type: INT,  dir: gw2plc,
+     note: "识别结果 1..4；100=拍照失败（官方约定，不是 0）"}
+
+# 方向说明：CommOK/Ready 是「算法告诉 PLC」，所以是 gw2plc；
+# 手册没给方向表（交接文档 §4 第 3 条），现场若发现 PLC 侧由 IO 驱动这两位，
+# 把 dir 改成 plc2gw 即可，不改代码。
