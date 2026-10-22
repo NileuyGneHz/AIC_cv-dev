@@ -1,0 +1,9 @@
+# Windows 侧 PLC 开发依赖（Python 3.10.x）
+# 安装：
+#   py -3.10 -m venv .venv
+#   .\.venv\Scripts\Activate.ps1
+#   pip install -r requirements-plc.txt
+#   pip install src\plugins\aic_plc_gateway\third_party\PyPlcnextRsc-0.1.12-py3-none-any.whl
+#
+# RSC 库必须用 0.1.12；仓库已内置同一个 wheel，离线也能装。
+PyYAML>=6.0,<7
