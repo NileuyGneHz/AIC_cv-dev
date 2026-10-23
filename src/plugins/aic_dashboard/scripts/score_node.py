@@ -55,6 +55,11 @@ import yaml
 
 TYPE_NAMES = {1: "划痕", 2: "污渍", 3: "缺角", 4: "孔洞"}
 TYPE_NAMES_EN = {1: "SCRATCH", 2: "STAIN", 3: "CHIP", 4: "HOLE"}
+# 库位墙格口边框色（BGR）：跟随该格物料的流转状态
+RACK_STATUS_COLORS = {
+    "stock": (85, 85, 85), "staged": (250, 170, 80), "held": (60, 190, 250),
+    "placed": (80, 205, 80), "recycled": (200, 120, 200),
+}
 STATUS_LABEL = {
     "pending": "待巡视", "visiting": "识别中", "handling": "搬运中",
     "ok": "正确", "wrong": "错误", "timeout": "超时",
@@ -383,6 +388,16 @@ def build_page():
   .vlabel { position:absolute; top:8px; left:10px; font-size:13px; color:#94a3b8;
             background:rgba(2,6,23,.6); padding:2px 10px; border-radius:6px; }
   #scene_v { flex:1; }
+  /* 库位监视墙：贴在观察窗左上角，12 格合成一张流（不是 12 个 <img>） */
+  #rackwall { position:absolute; left:10px; top:10px; width:384px; z-index:6;
+              background:#020617; border:1px solid #334155; border-radius:10px;
+              overflow:hidden; box-shadow:0 8px 22px rgba(0,0,0,.55); }
+  #rackwall img { width:100%; height:auto; display:block; }
+  #rackwall .cap { font-size:12px; color:#94a3b8; padding:4px 9px 5px;
+                   background:rgba(2,6,23,.92); border-top:1px solid #1e293b; }
+  #rackwall .cap b { color:#e2e8f0; font-weight:600; }
+  /* 原来的「全景」标签让位给库位墙，挪到右上角 */
+  #scene_v > .vlabel { left:auto; right:10px; }
   #pip { height:31%; }
   #banner { position:absolute; left:0; right:0; bottom:0; padding:8px 14px; font-size:16px;
             background:rgba(15,23,42,.78); display:none; }
@@ -417,7 +432,10 @@ def build_page():
 <main>
   <div class="col" style="flex:1.35">
     <div class="vwrap panel" id="scene_v"><img src="/scene.mjpg" alt="scene">
-      <div class="vlabel">全景 · 自由摄像机</div></div>
+      <div class="vlabel">全景 · 自由摄像机</div>
+      <div id="rackwall"><img src="/rack.mjpg" alt="rack wall">
+        <div class="cap"><b>库位监视</b> · 4 列 × 3 层 ｜ 边框：灰 空 · 琥珀 放入中 · 绿 已放</div>
+      </div></div>
     <div class="camctl">
       <button class="preset" onclick="cam({preset:'overhead'})">全景俯视</button>
       <button class="preset" onclick="cam({preset:'top'})">正俯视</button>
@@ -564,6 +582,8 @@ class DashboardHTTP:
                     self._stream(self.server.hub_ee)
                 elif self.path == "/scene.mjpg":
                     self._stream(self.server.hub_scene)
+                elif self.path == "/rack.mjpg":
+                    self._stream(self.server.hub_rack)
                 else:
                     self._send(404, b"not found", "text/plain")
 
@@ -606,6 +626,7 @@ class DashboardHTTP:
         self.httpd.move_cam = move_cam
         self.httpd.hub_ee = FrameHub()      # 末端相机
         self.httpd.hub_scene = FrameHub()   # 自由摄像机
+        self.httpd.hub_rack = FrameHub()    # 库位监视墙（12 格合成图）
         self.thread = threading.Thread(target=self.httpd.serve_forever,
                                        daemon=True, name="dashboard-http")
 
@@ -615,9 +636,11 @@ class DashboardHTTP:
     def stop(self):
         self.httpd.shutdown()
 
-    def publish_frame(self, frame, scene=False):
+    def publish_frame(self, frame, scene=False, rack=False):
         """相机线程调用：缓存最新帧并唤醒流客户端。"""
-        (self.httpd.hub_scene if scene else self.httpd.hub_ee).publish(frame)
+        hub = self.httpd.hub_rack if rack else (
+            self.httpd.hub_scene if scene else self.httpd.hub_ee)
+        hub.publish(frame)
 
 
 class ScoreNode(Node):
@@ -664,6 +687,19 @@ class ScoreNode(Node):
                              reliability=ReliabilityPolicy.BEST_EFFORT)
         self.create_subscription(Image, image_topic, self._on_image, img_qos)
         self.create_subscription(Image, scene_image_topic, self._on_scene_image, img_qos)
+
+        # ---- 库位监视墙：每格一只隐藏相机（gen_world.rack_cam_model）----
+        rack_cfg = self.layout.get("rack") or {}
+        self.rack_cols = int(rack_cfg.get("cols", 4))
+        self.rack_rows = int(rack_cfg.get("rows", 3))
+        self.rack_wall_hz = float(self.declare_parameter("rack_wall_hz", 5.0).value)
+        cam_tpl = self.declare_parameter("rack_cam_topic", "/rack/cam_{:02d}/image").value
+        self.rack_frames = {}
+        self.rack_lock = threading.Lock()
+        for sid in range(1, self.rack_cols * self.rack_rows + 1):
+            self.create_subscription(
+                Image, cam_tpl.format(sid),
+                lambda m, s=sid: self._on_rack_image(m, s), img_qos)
         # 夹/放信号（控制侧本来就发，桥 ROS->GZ；ROS 侧订阅同样收得到）
         for s in range(1, len(types) + 1):
             self.create_subscription(Empty, "/sim/attach_{:02d}".format(s),
@@ -676,6 +712,9 @@ class ScoreNode(Node):
 
         self.dash = DashboardHTTP(self.state, port, self._move_cam)
         self.dash.start()
+        # 合成线程必须等 dash 建好再起（否则第一拍会 AttributeError: 'dash'）
+        threading.Thread(target=self._rack_wall_loop, daemon=True,
+                         name="rack-wall").start()
         self.get_logger().info(
             "[dashboard] 判分看板：http://127.0.0.1:%d  （真值 %d 库位：%s；自由摄像机就绪）"
             % (port, len(types), "".join(str(t) for t in types)))
@@ -763,6 +802,74 @@ class ScoreNode(Node):
             self.get_logger().warn("[dashboard] 场景图转换失败: %s" % e, throttle_duration_sec=5.0)
             return
         self.dash.publish_frame(frame, scene=True)
+
+    # ---------- 库位监视墙 ----------
+    def _on_rack_image(self, msg, sid):
+        try:
+            frame = self._to_bgr(msg)
+        except Exception as e:                                        # noqa: BLE001
+            self.get_logger().warn("[dashboard] 库位相机 %d 图像转换失败: %s" % (sid, e),
+                                   throttle_duration_sec=10.0)
+            return
+        with self.rack_lock:
+            self.rack_frames[sid] = frame
+
+    def _compose_rack_wall(self):
+        """把 12 路格口相机拼成 4 列 x 3 层的一张图（层 3 在上，与现场视角一致）。
+
+        每格左上角标 T<列> L<层>，边框颜色跟随该格物料状态：
+        灰=未上料 / 蓝=在置物台 / 琥珀=吸盘持有 / 绿=已放入 / 紫=回收位。
+        """
+        cols, rows = self.rack_cols, self.rack_rows
+        with self.rack_lock:
+            frames = dict(self.rack_frames)
+        # 用相机原始分辨率拼（128x96），不放大：分辨率由 sim_layout.rack_cams 决定
+        sample = next(iter(frames.values()), None)
+        th, tw = (sample.shape[:2] if sample is not None else (96, 128))
+        canvas = np.full((rows * th, cols * tw, 3), (26, 20, 14), np.uint8)
+        # 格口状态要按「类型列 + 层」映射，不能用物料号直接索引格口：
+        # 物料的落点由 controller 按「该类型列最低空层」决定，与物料号无关。
+        snap = self.state.snapshot()
+        status = {}
+        for p in snap["plates"]:
+            if p["status"] == "placed" and p.get("level"):
+                status[(int(p["type"]), int(p["level"]))] = "placed"
+        for p in snap["plates"]:
+            if p["status"] == "held":
+                t = int(p["type"])
+                used = [lv for (c, lv) in status if c == t]
+                status.setdefault((t, (max(used) + 1) if used else 1), "held")
+        for level in range(1, rows + 1):
+            for col in range(1, cols + 1):
+                sid = (level - 1) * cols + col
+                x0, y0 = (col - 1) * tw, (rows - level) * th
+                f = frames.get(sid)
+                if f is not None:
+                    canvas[y0:y0 + th, x0:x0 + tw] = cv2.resize(
+                        f, (tw, th), interpolation=cv2.INTER_AREA)
+                else:
+                    cv2.putText(canvas, "no signal", (x0 + 8, y0 + th // 2),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.4, (120, 120, 120), 1, cv2.LINE_AA)
+                color = RACK_STATUS_COLORS.get(
+                    status.get((col, level), "stock"), (85, 85, 85))
+                cv2.rectangle(canvas, (x0 + 1, y0 + 1), (x0 + tw - 2, y0 + th - 2), color, 2)
+                label = "T%d L%d" % (col, level)
+                cv2.putText(canvas, label, (x0 + 6, y0 + 17), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.45, (15, 15, 15), 3, cv2.LINE_AA)
+                cv2.putText(canvas, label, (x0 + 6, y0 + 17), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.45, (235, 235, 235), 1, cv2.LINE_AA)
+        return canvas
+
+    def _rack_wall_loop(self):
+        period = 1.0 / max(1.0, self.rack_wall_hz)
+        while True:
+            t0 = time.monotonic()
+            try:
+                self.dash.publish_frame(self._compose_rack_wall(), rack=True)
+            except Exception as e:                                    # noqa: BLE001
+                self.get_logger().warn("[dashboard] 库位墙合成失败: %s" % e,
+                                       throttle_duration_sec=10.0)
+            time.sleep(max(0.0, period - (time.monotonic() - t0)))
 
     def _overlay(self, frame):
         """在末端相机帧上叠加当前位点 / 识别 / 比分（cv2 字体不支持中文，用英文）。"""

@@ -12,7 +12,7 @@
 | 决策（行为树） | 完成 | 12 库位蛇形巡视，`bt_runner` + 8 节点，见 `docs/guides/decision_bt_architecture.md` |
 | Gazebo 仿真（M4） | 完成 | 来料架 3×4 → 置物台识别 → 吸盘取料 → 分拣货架 4 列×3 层；真视觉整轮 **12/12**、落位 **0.0 mm**、约 145 s |
 | 传统视觉 | 完成 | 盘面定位 + 四类缺陷判据，仿真 12/12；`src/vision/aic_vision_trad` |
-| 判分看板 | 完成 | 纯旁路 HTTP :8080，MJPEG + 态势图 + 逐位点判分 |
+| 判分看板 | 完成 | 纯旁路 HTTP :8080，MJPEG + 12 格库位监视墙 + 态势图 + 逐位点判分 |
 | PLC 网关 | 完成（Modbus 已实测 / RSC 干跑） | `aic_plc_gateway`；接管整轮 12/12、约 130 s |
 | 真机执行机构 | 未接 | 需串口/CAN 驱动替换 `gantry_controller` 的执行层 |
 | 海康相机 | 未接 | 需相机或 aarch64 版 MVS SDK |
@@ -77,6 +77,8 @@ ros2 launch aic_dashboard dashboard.launch.py vision_backend:=trad gui:=true
 ```
 
 随后应出现：Gazebo 窗口（场景）、启动终端（日志）、浏览器 <http://127.0.0.1:8080>（看板）。
+看板**左上角**应有一块 4×3 的「库位监视」小画面（12 个格口各一只隐藏相机），
+每格边框颜色 = 该格物料状态（灰 空 / 蓝 台面 / 琥珀 抓取 / 绿 已放）。
 **GUI 窗口会晚 3–5 s 才出来**——它是独立客户端，要先等仿真服务端把 `/world/` 发布出来。
 另开一个终端 `ros2 node list`，应看到 6 个节点：`gz_bridge`、`gz_camera_bridge`、
 `gantry_controller`、`vision_trad_node`、`aic_decision_bt`、`aic_score_node`。

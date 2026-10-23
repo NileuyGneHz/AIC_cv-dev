@@ -723,6 +723,54 @@ def camera_post_model(layout):
     return "".join(out)
 
 
+def rack_cam_model(layout):
+    """每个货架格口一只**隐藏**监视相机（只有 sensor，没有 visual，不参与物理）。
+
+    为什么不用「正上方垂直下视」：货架是垂直立面，层间距只有 0.06 m，
+    正上方会被上一层托盘整块挡住。改成「格口前沿外 + 略高」斜视格心：
+    视线擦过围边上沿（余量 ~14 mm），能看到整个盘面。
+    分辨率 160x120 / 5 Hz：只做占位监视（有没有料、放没放正），
+    真正的识别仍走置物台上方的 ee_cam，两套互不影响。
+    话题：/rack/cam_<id>/image，id 与 slot_centers 的格口号一致（层优先）。
+    """
+    cam = layout.get("rack_cams") or {}
+    fov = float(cam.get("fov_h", 1.25))
+    w = int(cam.get("width", 160))
+    h = int(cam.get("height", 120))
+    rate = float(cam.get("update_rate", 5.0))
+    z_lift = float(cam.get("z_lift", 0.040))     # 相对本层托盘面的高度
+    y_off = float(cam.get("y_offset", 0.115))    # 在格口前沿外多少
+    pitch = math.atan2(z_lift - 0.006, y_off)    # 看向盘顶（盘厚 6 mm）
+
+    out = ['    <!-- 库位监视相机墙：每格一只隐藏相机（无 visual，俯视格心） -->\n',
+           '    <model name="rack_cams">\n',
+           "      <static>true</static>\n"]
+    for s in slot_centers(layout):
+        x = s["x"]
+        y = s["y"] - y_off
+        z = s["z"] + z_lift
+        out.append(
+            '      <link name="cam_{id:02d}">\n'
+            "        <pose>{x:.4f} {y:.4f} {z:.4f} 0 {p:.4f} 1.5708</pose>\n"
+            '        <sensor name="rack_cam_{id:02d}" type="camera">\n'
+            "          <pose>0 0 0 0 0 0</pose>\n"
+            "          <always_on>1</always_on>\n"
+            "          <visualize>false</visualize>\n"
+            "          <update_rate>{rate}</update_rate>\n"
+            "          <topic>/rack/cam_{id:02d}/image</topic>\n"
+            "          <camera>\n"
+            "            <horizontal_fov>{fov}</horizontal_fov>\n"
+            "            <image><width>{w}</width><height>{h}</height>"
+            "<format>R8G8B8</format></image>\n"
+            "            <clip><near>0.01</near><far>2.0</far></clip>\n"
+            "          </camera>\n"
+            "        </sensor>\n"
+            "      </link>\n".format(
+                id=s["id"], x=x, y=y, z=z, p=pitch, rate=rate, fov=fov, w=w, h=h))
+    out.append("    </model>\n\n")
+    return "".join(out)
+
+
 def build_sdf(layout, seed=None):
     slots = slot_centers(layout)
     types = material_types(layout, len(slots))
@@ -730,7 +778,7 @@ def build_sdf(layout, seed=None):
     out = [HEADER, base_plate_model(layout), rack_shelf_model(layout),
            staging_table_model(layout), material_park_model(layout),
            recycle_marker(layout), ee_cam_model(layout),
-           camera_post_model(layout), scene_cam(layout)]
+           camera_post_model(layout), rack_cam_model(layout), scene_cam(layout)]
     out.append("    <!-- ===== 12 块圆形物料（开局停在底板下方的停料托板上，运行时逐块 set_pose 上料；"
                "类型 = materials.types[序号-1]）===== -->\n")
     for s, t in zip(slots, types):

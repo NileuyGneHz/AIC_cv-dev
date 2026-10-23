@@ -53,6 +53,15 @@ CAMERA_TOPICS = [
 ]
 
 
+def rack_cam_topics(n_slots):
+    """库位监视相机（gen_world.rack_cam_model 生成）GZ -> ROS 桥。
+
+    只桥图像、不桥 camera_info：看板只做缩略图，不需要内参。
+    """
+    return ["/rack/cam_{:02d}/image@sensor_msgs/msg/Image[ignition.msgs.Image".format(i)
+            for i in range(1, int(n_slots) + 1)]
+
+
 def grip_topics(n_slots):
     """抓取/释放信号桥：每块铁片一对，话题名与 gen_world.py 生成的 DetachableJoint 一致。
 
@@ -159,7 +168,7 @@ def generate_launch_description():
         Node(package="ros_gz_bridge", executable="parameter_bridge",
              name="gz_camera_bridge", output="screen",
              condition=IfCondition(bridge_camera),
-             arguments=CAMERA_TOPICS),
+             arguments=CAMERA_TOPICS + rack_cam_topics(n_slots)),
 
         # 控制侧（仿真实现）：/control/material_task -> 关节指令
         Node(package="aic_gazebo_sim", executable="gantry_controller.py",
