@@ -129,7 +129,7 @@ materials:
   jitter_seed: 0                                  # 0=固定几何；>0=随机化（见 §7）
 ```
 
-类型编号：**1=划痕 2=污渍 3=缺角 4=孔洞**。改完重跑 gen_world.py，视觉真值随之变化。
+类型编号：**1=划痕 2=污渍 3=破损（赛题规则里写作缺角）4=孔洞**。改完重跑 gen_world.py，视觉真值随之变化。
 
 ### 6.2 各段速览
 
@@ -262,8 +262,8 @@ ros2 run aic_gazebo_sim capture_storyboard.py \
 | 铁片整批停在 z=0.013（或穿到地面） | 坑 14 | 碰撞体与可视体错位：visual 带 pose 的，collision 必须给同一份 pose |
 | 放料每块白等 8 s，还连锁 TIMEOUT | 坑 15 | 叠放必高 6 mm：放料用独立 `place` 步「触底判据」（日志打「已触底」） |
 | 到位首帧画面还是运动中的 → 判错 | 坑 16 | 图像订阅 depth 必须 1 + `settle_skip_s` 跳过停稳期旧帧 |
-| 缺角偶发判成污渍 / 特征帧间乱跳 | 坑 17/18 | 圆精修是否被拒（日志标「精修被拒」）；`frac` 阈值不能贴实测值 |
-| 贴边孔洞被判成缺角 | 坑 21 | 近黑核心判据（`core ≥ 0.05`）是否在位、放在缺角之前 |
+| 破损偶发判成污渍 / 特征帧间乱跳 | 坑 17/18 | 圆精修是否被拒（日志标「精修被拒」）；`frac` 阈值不能贴实测值 |
+| 贴边孔洞被判成破损 | 坑 21 | 近黑核心判据（`core ≥ 0.05`）是否在位、放在缺角之前 |
 | joint_state 断流 + 相机不出帧 | 坑 20/22 | 先区分两种死法：launch 日志找 `signal_handler(SIGINT)` + `process has finished cleanly`——有就是**桥被杀**（多半是有人改了正在跑的脚本），没有才是 run-loop 卡死 |
 | 两套仿真互相污染：类型整片错位 + 莫名 TIMEOUT | 坑 22/23 | **同机并发必须 `--domain auto`**。起跑前 `ps -eo pid,etimes,cmd \| grep -E 'gzserver|verify_sim'`；判断撞号唯一可靠方法是比 `/proc/<pid>/environ` 的 `IGN_PARTITION`（话题条数不可靠） |
 | 改脚本/改代码时正跑着的实例突然死 | 坑 22 | bash 边读边执行；**改 scripts/*.sh 前先 `pgrep -af gzserver`** 确认没实例在跑 |

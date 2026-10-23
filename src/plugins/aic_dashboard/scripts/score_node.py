@@ -48,12 +48,13 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from sensor_msgs.msg import Image
-from std_msgs.msg import Empty, String, UInt8
+from geometry_msgs.msg import Vector3
+from std_msgs.msg import Bool, Empty, Float64, String, UInt8
 from aic_msgs.msg import MaterialTask
 
 import yaml
 
-TYPE_NAMES = {1: "划痕", 2: "污渍", 3: "缺角", 4: "孔洞"}
+TYPE_NAMES = {1: "划痕", 2: "污渍", 3: "破损", 4: "孔洞"}
 TYPE_NAMES_EN = {1: "SCRATCH", 2: "STAIN", 3: "CHIP", 4: "HOLE"}
 # 库位墙格口边框色（BGR）：跟随该格物料的流转状态
 RACK_STATUS_COLORS = {
@@ -140,7 +141,8 @@ class ScoreState:
             self.slots[s] = {"status": "pending", "got": None,
                              "visit": None, "since": None, "t": None}
         self.task_type = {}                       # HANDLE 已知的判型（slot -> type）
-        self.events = []                          # [(time_str, text)]
+        self.events = []
+        self.extra = {}          # 节点侧补充的状态（手动模式/帧龄/端口），随快照下发                          # [(time_str, text)]
         self.cur_visit = 0
         self.cur_slot = None
         self.last_vision = None                   # 最近一条识别结果（显示用）
@@ -353,6 +355,7 @@ class ScoreState:
                 # ---- 态势图 ----
                 "gantry": dict(self.gantry),
                 "plates": [{"id": s, **pl} for s, pl in sorted(self.plates.items())],
+                "sys": dict(self.extra),
                 "map": {"cols": self.cols, "rows": self.rows,
                         "col_xs": col_xs, "rack_y": self.rack_y_front,
                         "step_y": self.step_y, "lpz": self.lpz,
@@ -363,80 +366,111 @@ class ScoreState:
 
 
 def build_page():
-    """仪表盘单页（无外部依赖，浏览器直开即录）。"""
+    """判分看板单页：布局对齐官方 VirtualNext 控制窗口。
+
+    左：全景视图 + 底部三联（库位监视 / 放料位结果 / 态势图）
+    右：(6) 运行状态 (2) XYZ 手动调试 (3) 抓取/放置/生成物料/拍照 (4) 日志 (5) 重置/退出
+    """
     return """<!DOCTYPE html>
 <html lang="zh"><head><meta charset="utf-8">
-<title>AIC 判分看板</title>
+<title>AIC 视觉分拣 · 控制与判分</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; margin: 0; }
   body { background:#0f172a; color:#e2e8f0; font-family:"Noto Sans CJK SC","WenQuanYi Micro Hei",sans-serif;
-         height:100vh; display:flex; flex-direction:column; padding:12px 16px; gap:10px; }
-  header { display:flex; align-items:center; gap:22px; }
-  h1 { font-size:21px; font-weight:700; letter-spacing:1px; }
-  .chip { padding:6px 18px; border-radius:10px; font-size:21px; font-weight:700; }
-  .chip small { font-size:12px; font-weight:400; opacity:.85; margin-right:8px; }
+         height:100vh; display:flex; flex-direction:column; padding:10px 14px; gap:8px; overflow:hidden; }
+  header { display:flex; align-items:center; gap:18px; flex:0 0 auto; }
+  h1 { font-size:19px; font-weight:700; letter-spacing:1px; }
+  .chip { padding:4px 14px; border-radius:9px; font-size:18px; font-weight:700; }
+  .chip small { font-size:11px; font-weight:400; opacity:.85; margin-right:6px; }
   .ok   { background:#14532d; color:#4ade80; border:1px solid #22c55e; }
   .err  { background:#7f1d1d; color:#f87171; border:1px solid #ef4444; }
-  .rest { background:#1e293b; color:#94a3b8; border:1px solid #475569; }
-  #cur  { font-size:15px; color:#fbbf24; }
-  main { flex:1; display:flex; gap:14px; min-height:0; }
-  .col { display:flex; flex-direction:column; gap:10px; min-width:0; }
-  .panel { background:#1e293b; border-radius:12px; overflow:hidden; }
-  .vwrap { position:relative; background:#000; border-radius:12px; overflow:hidden; }
-  .vwrap img { width:100%; height:100%; object-fit:contain; }
-  .vlabel { position:absolute; top:8px; left:10px; font-size:13px; color:#94a3b8;
-            background:rgba(2,6,23,.6); padding:2px 10px; border-radius:6px; }
-  #scene_v { flex:1; }
-  /* 库位监视墙：贴在观察窗左上角，12 格合成一张流（不是 12 个 <img>） */
-  #rackwall { position:absolute; left:10px; top:10px; width:384px; z-index:6;
-              background:#020617; border:1px solid #334155; border-radius:10px;
-              overflow:hidden; box-shadow:0 8px 22px rgba(0,0,0,.55); }
-  #rackwall img { width:100%; height:auto; display:block; }
-  #rackwall .cap { font-size:12px; color:#94a3b8; padding:4px 9px 5px;
-                   background:rgba(2,6,23,.92); border-top:1px solid #1e293b; }
-  #rackwall .cap b { color:#e2e8f0; font-weight:600; }
-  /* 原来的「全景」标签让位给库位墙，挪到右上角 */
-  #scene_v > .vlabel { left:auto; right:10px; }
-  #pip { height:31%; }
-  #banner { position:absolute; left:0; right:0; bottom:0; padding:8px 14px; font-size:16px;
-            background:rgba(15,23,42,.78); display:none; }
+  .rest { background:#1e293b; color:#cbd5e1; border:1px solid #334155; }
+  #cur { font-size:13px; color:#94a3b8; }
+  main { flex:1 1 auto; min-height:0; display:grid; grid-template-columns:minmax(0,1fr) 372px; gap:10px; }
+  .left { min-width:0; min-height:0; display:grid; grid-template-rows:minmax(140px,1fr) auto 252px; gap:8px; }
+  .strip { display:grid; grid-template-columns:1.12fr 1fr 0.86fr; gap:10px; min-height:0; }
+  .panel { background:#1e293b; border-radius:12px; overflow:hidden; min-width:0; }
+  .cell { display:flex; flex-direction:column; min-height:0; }
+  .cell .cap { font-size:12px; color:#94a3b8; padding:6px 10px 4px; flex:0 0 auto; }
+  .cell img { width:100%; height:0; object-fit:contain; background:#0b1220; flex:1 1 auto; min-height:0; }
+  .cell svg { flex:1 1 auto; min-height:0; display:block; }
+  .vwrap { position:relative; background:#000; }
+  .vwrap > img { width:100%; height:100%; object-fit:contain; }
+  .vlabel { position:absolute; top:8px; right:10px; font-size:12px; color:#94a3b8;
+            background:rgba(2,6,23,.65); padding:2px 10px; border-radius:6px; }
+  .cambar { display:grid; grid-template-columns:repeat(6,1fr); gap:5px; }
+  .cambar button { background:#111c2e; color:#cbd5e1; border:1px solid #334155;
+                   border-radius:7px; padding:6px 2px; font-size:12px; cursor:pointer; }
+  .cambar button:hover { border-color:#64748b; color:#fff; }
+  .cambar .preset { border-color:#7c3aed; color:#c4b5fd; }
+  #banner { position:absolute; left:10px; top:8px; padding:4px 12px; font-size:13px;
+            border-radius:6px; background:rgba(2,6,23,.72); display:none; }
   #banner.ok { color:#4ade80; } #banner.vis { color:#fbbf24; }
-  .camctl { display:grid; grid-template-columns:repeat(6,1fr); gap:6px; }
-  .camctl button { background:#1e293b; color:#cbd5e1; border:1px solid #334155; border-radius:8px;
-                   padding:7px 2px; font-size:13px; cursor:pointer; }
-  .camctl button:hover { border-color:#64748b; color:#fff; }
-  .camctl .preset { border-color:#7c3aed; color:#c4b5fd; }
-  #grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
-  .slot { border-radius:10px; padding:7px 6px; text-align:center; background:#1e293b;
-          border:2px solid #334155; transition:all .25s; }
-  .slot .id { font-size:21px; font-weight:800; }
-  .slot .gt { font-size:12px; margin-top:2px; min-height:15px; color:#94a3b8; }
-  .slot.pending  { opacity:.45; }
-  .slot.visiting, .slot.handling { border-color:#fbbf24; background:#3a2e10; }
-  .slot.ok       { border-color:#22c55e; background:#14532d; }
-  .slot.wrong, .slot.timeout { border-color:#ef4444; background:#7f1d1d; }
-  #log { flex:1; overflow-y:auto; background:#020617; border:1px solid #1e293b; border-radius:12px;
-         padding:8px 12px; font-size:13px; line-height:1.65; }
+  aside { min-height:0; display:flex; flex-direction:column; gap:8px; overflow-y:auto; padding-right:2px; }
+  main > * { min-height:0; }
+  .sec { padding:8px 10px; flex:0 0 auto; }
+  .sec h2 { font-size:12px; color:#94a3b8; font-weight:600; letter-spacing:.5px;
+            margin-bottom:6px; display:flex; justify-content:space-between; align-items:center; }
+  .sec h2 .tag { font-size:11px; color:#64748b; font-weight:400; }
+  .stat { display:grid; grid-template-columns:auto 1fr; gap:2px 10px; font-size:12px; color:#cbd5e1; }
+  .stat b { color:#94a3b8; font-weight:400; }
+  .stat .on { color:#4ade80; } .stat .off { color:#f87171; }
+  .xyz { display:grid; grid-template-columns:20px 62px 1fr 26px 26px 44px 44px; gap:4px;
+         align-items:center; font-size:12px; margin-bottom:5px; }
+  .xyz b { color:#7dd3fc; }
+  .xyz .now { color:#94a3b8; text-align:right; font-variant-numeric:tabular-nums; }
+  .xyz input, .spd input { background:#0b1220; border:1px solid #334155; color:#e2e8f0;
+         border-radius:5px; padding:3px 4px; font-size:12px; width:100%; text-align:right; }
+  .xyz button, .spd button, .acts button, .foot button, .mbtn {
+         background:#0b1220; color:#cbd5e1; border:1px solid #334155; border-radius:6px;
+         font-size:12px; padding:4px 2px; cursor:pointer; }
+  .xyz button:hover, .acts button:hover, .foot button:hover, .mbtn:hover { border-color:#64748b; color:#fff; }
+  .spd { display:grid; grid-template-columns:auto 70px 58px 1fr 78px; gap:6px; align-items:center;
+         font-size:12px; margin-top:6px; color:#94a3b8; }
+  .spd .hint { font-size:11px; color:#475569; }
+  .mbtn { padding:6px 10px; }
+  .mbtn.on { background:#7c2d12; border-color:#f97316; color:#fdba74; }
+  .acts { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  .acts button { padding:8px 4px; font-size:13px; }
+  .acts button.pri { border-color:#0ea5e9; color:#7dd3fc; }
+  #log { flex:1 1 auto; min-height:120px; overflow-y:auto; background:#020617;
+         border:1px solid #1e293b; border-radius:10px; padding:6px 9px; font-size:12px; line-height:1.6; }
   #log .e-ok { color:#4ade80; } #log .e-bad { color:#f87171; } #log .e-info { color:#94a3b8; }
+  .foot { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  .foot button { padding:7px 0; font-size:13px; }
+  .foot .danger { border-color:#7f1d1d; color:#fca5a5; }
+  #grid { display:grid; grid-template-columns:repeat(4,1fr); gap:5px; padding:0 6px 6px;
+          flex:1 1 auto; min-height:0; }
+  .slot { border-radius:7px; background:#0b1220; border:2px solid #334155; display:flex;
+          flex-direction:column; align-items:center; justify-content:center; min-height:0; }
+  .slot .id { font-size:15px; font-weight:800; line-height:1.1; }
+  .slot .gt { font-size:10px; color:#94a3b8; min-height:12px; }
+  .slot.pending { opacity:.45; }
+  .slot.visiting, .slot.handling { border-color:#fbbf24; background:#3a2e10; }
+  .slot.ok { border-color:#22c55e; background:#14532d; }
+  .slot.wrong, .slot.timeout { border-color:#ef4444; background:#7f1d1d; }
+  #toast { position:fixed; right:16px; bottom:14px; background:#0b1220; border:1px solid #334155;
+           color:#e2e8f0; border-radius:8px; padding:7px 12px; font-size:12px; opacity:0;
+           transition:opacity .2s; max-width:360px; }
   svg text { font-family:inherit; }
 </style></head>
 <body>
 <header>
-  <h1>AIC 视觉分拣 · 实时判分</h1>
+  <h1>AIC 视觉分拣 · 控制与判分</h1>
   <div class="chip ok"><small>正确</small><span id="s-ok">0</span></div>
   <div class="chip err"><small>错误</small><span id="s-err">0</span></div>
   <div class="chip rest"><small>剩余</small><span id="s-rest">12</span></div>
   <div id="cur"></div>
 </header>
 <main>
-  <div class="col" style="flex:1.35">
-    <div class="vwrap panel" id="scene_v"><img src="/scene.mjpg" alt="scene">
+  <section class="left">
+    <div class="vwrap panel" id="scene_v">
+      <img src="/scene.mjpg" alt="scene">
       <div class="vlabel">全景 · 自由摄像机</div>
-      <div id="rackwall"><img src="/rack.mjpg" alt="rack wall">
-        <div class="cap"><b>库位监视</b> · 4 列 × 3 层 ｜ 边框：灰 空 · 琥珀 放入中 · 绿 已放</div>
-      </div></div>
-    <div class="camctl">
+      <div id="banner"></div>
+    </div>
+    <div class="cambar">
       <button class="preset" onclick="cam({preset:'overhead'})">全景俯视</button>
       <button class="preset" onclick="cam({preset:'top'})">正俯视</button>
       <button class="preset" onclick="cam({preset:'rack'})">货架特写</button>
@@ -448,82 +482,191 @@ def build_page():
       <button onclick="cam({dz:0.15})">升</button>
       <button onclick="cam({dz:-0.15})">降</button>
       <button onclick="cam({dx:-0.5,dy:0.5,dz:0.3,preset:'overhead'})">回位</button>
-      <button onclick="cam({dz:0,dx:0,dy:0,home:1})">默认</button>
+      <button onclick="cam({home:1})">默认</button>
     </div>
-  </div>
-  <div class="col" style="flex:1">
-    <div class="vwrap panel" id="pip"><img src="/stream.mjpg" alt="end-effector">
-      <div class="vlabel">末端相机</div><div id="banner"></div></div>
-    <div id="grid"></div>
-    <div id="log"></div>
-  </div>
-  <div class="col" style="flex:1">
-    <div class="panel" style="padding:8px"><svg id="map" viewBox="0 0 372 300" width="100%"></svg></div>
-    <div style="font-size:12px;color:#64748b;padding:0 4px">
-      态势图：圆点=物料（颜色=缺陷类型，暗=待上料），十字=龙门，绿框=置物台，灰框=来料架 3x4，右侧四列=分拣货架</div>
-  </div>
+    <div class="strip">
+      <div class="panel cell">
+        <div class="cap">库位监视 · 4 列 × 3 层（边框：灰 空 / 琥珀 放入中 / 绿 已放）</div>
+        <img src="/rack.mjpg" alt="rack wall">
+      </div>
+      <div class="panel cell">
+        <div class="cap">放料位结果 · 12 个位点</div>
+        <div id="grid"></div>
+      </div>
+      <div class="panel cell">
+        <div class="cap">态势图</div>
+        <svg id="map" viewBox="0 0 372 300" preserveAspectRatio="xMidYMid meet"
+             style="width:100%;height:100%"></svg>
+      </div>
+    </div>
+  </section>
+  <aside>
+    <div class="panel sec">
+      <h2>运行状态 <span class="tag">(6)</span></h2>
+      <div class="stat">
+        <b>视觉相机</b><span id="st-img">-</span>
+        <b>全景相机</b><span id="st-scene">-</span>
+        <b>关节反馈</b><span id="st-joint">-</span>
+        <b>库位相机</b><span id="st-rack">-</span>
+        <b>控制模式</b><span id="st-mode">-</span>
+        <b>看板端口</b><span id="st-port">-</span>
+      </div>
+    </div>
+
+    <div class="panel sec">
+      <h2>手动调试 · XYZ <span class="tag">(2)</span></h2>
+      <div class="xyz"><b>X</b><span class="now" id="x-now">0.0</span>
+        <input id="x-in" value="0.0"><button onclick="step('x',-1)">−</button><button onclick="step('x',1)">+</button>
+        <button onclick="moveAxis('x')">移动</button><button onclick="copyNow('x')">位置</button></div>
+      <div class="xyz"><b>Y</b><span class="now" id="y-now">0.0</span>
+        <input id="y-in" value="0.0"><button onclick="step('y',-1)">−</button><button onclick="step('y',1)">+</button>
+        <button onclick="moveAxis('y')">移动</button><button onclick="copyNow('y')">位置</button></div>
+      <div class="xyz"><b>Z</b><span class="now" id="z-now">0.0</span>
+        <input id="z-in" value="0.0"><button onclick="step('z',-1)">−</button><button onclick="step('z',1)">+</button>
+        <button onclick="moveAxis('z')">移动</button><button onclick="copyNow('z')">位置</button></div>
+      <div class="spd">
+        <span>速度</span><input id="spd-in" value="0.20"><span class="hint">m/s</span>
+        <button class="mbtn" id="mbtn" onclick="toggleManual()">手动：关</button>
+        <button onclick="goHome()">原点</button>
+      </div>
+    </div>
+
+    <div class="panel sec">
+      <h2>手动调试 · 动作 <span class="tag">(3)</span></h2>
+      <div class="acts">
+        <button class="pri" onclick="cmd({action:'grab'})">抓取</button>
+        <button class="pri" onclick="cmd({action:'release'})">放置</button>
+        <button onclick="cmd({action:'spawn'})">生成物料</button>
+        <button onclick="cmd({action:'photo'})">拍照</button>
+      </div>
+    </div>
+
+    <div class="panel sec" style="display:flex;flex-direction:column;min-height:150px;flex:1 1 auto">
+      <h2>运行日志 <span class="tag">(4)</span></h2>
+      <div id="log"></div>
+    </div>
+
+    <div class="panel sec">
+      <h2>系统 <span class="tag">(5)</span></h2>
+      <div class="foot">
+        <button onclick="cmd({action:'reset'})">重置判分</button>
+        <button class="danger" onclick="cmd({action:'exit'})">退出看板</button>
+      </div>
+    </div>
+  </aside>
 </main>
+<div id="toast"></div>
 <script>
-const TN = {1:"划痕",2:"污渍",3:"缺角",4:"孔洞"};
+const TN = {1:"划痕",2:"污渍",3:"破损",4:"孔洞"};
 const TC = {1:"#38bdf8",2:"#fb923c",3:"#a78bfa",4:"#34d399"};
 const grid = document.getElementById("grid");
 for (let i = 1; i <= 12; i++) {
   grid.insertAdjacentHTML("beforeend",
     `<div class="slot pending" id="slot-${i}"><div class="id">${i}</div><div class="gt"></div></div>`);
 }
+let lastState = null, sysManual = false, editing = null;
+
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.style.opacity = 1;
+  clearTimeout(t._h); t._h = setTimeout(() => { t.style.opacity = 0; }, 2200);
+}
 async function cam(body) {
   try { await fetch("/api/cam", {method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify(body)}); } catch (e) {}
 }
+async function cmd(body) {
+  try {
+    const r = await fetch("/api/cmd", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(body)});
+    const d = await r.json();
+    toast((d.ok ? "✓ " : "✗ ") + d.info);
+    if (body.action === "manual") { sysManual = !!body.on; paintManual(); }
+  } catch (e) { toast("命令失败：" + e); }
+}
+function paintManual() {
+  const b = document.getElementById("mbtn");
+  b.textContent = "手动：" + (sysManual ? "开" : "关");
+  b.className = "mbtn" + (sysManual ? " on" : "");
+}
+function toggleManual() { cmd({action:"manual", on: !sysManual}); }
+function step(a, sgn) {
+  const el = document.getElementById(a + "-in");
+  const v = parseFloat(el.value || "0") + sgn * 1.0;
+  el.value = v.toFixed(1);
+}
+function copyNow(a) {
+  if (!lastState) return;
+  document.getElementById(a + "-in").value = (lastState.gantry[a] * 1000).toFixed(1);
+}
+function moveAxis(a) {
+  if (!sysManual) { toast("先打开手动模式（自动流程占用中，点动无效）"); return; }
+  const v = parseFloat(document.getElementById(a + "-in").value || "0") / 1000.0;
+  const body = {action:"jog"}; body[a] = v; cmd(body);
+}
+function goHome() {
+  if (!sysManual) { toast("先打开手动模式"); return; }
+  cmd({action:"home"});
+}
+document.getElementById("spd-in").addEventListener("change", () => {
+  cmd({action:"speed", value: parseFloat(document.getElementById("spd-in").value || "0.2")});
+});
+for (const a of ["x","y","z"]) {
+  const el = document.getElementById(a + "-in");
+  el.addEventListener("focus", () => { editing = a; });
+  el.addEventListener("blur", () => { editing = null; });
+}
+
 function drawMap(d) {
   const S = 320, ox = 0.58, oy = 0.42;
   const X = x => (x + ox) * S, Y = y => (y + oy) * S;
   const m = d.map;
   let s = `<rect width="100%" height="100%" fill="#0b1220"/>`;
-  // 放置货架：4 类型列 x 3 层（第 1 层最靠 -Y，往上后退，与 sim_layout.rack 一致）
   for (let lv = 0; lv < m.rows; lv++) {
     const ry = m.rack_y - (m.rows - 1 - lv) * m.step_y;
     m.col_xs.forEach((zx, i) => {
-      s += `<rect x="${X(zx)-19}" y="${Y(ry)-19}" width="38" height="38"
+      s += `<rect x="${X(zx)-17}" y="${Y(ry)-17}" width="34" height="34"
         fill="#1e293b" stroke="#475569" rx="4"/>`;
       if (lv === 0) {
-        s += `<text x="${X(zx)}" y="${Y(ry)+4}" fill="#64748b" font-size="11"
+        s += `<text x="${X(zx)}" y="${Y(ry)+4}" fill="#64748b" font-size="10"
           text-anchor="middle">T${i+1}</text>`;
       }
-      s += `<text x="${X(zx)+16}" y="${Y(ry)-9}" fill="#334155" font-size="9"
+      s += `<text x="${X(zx)+14}" y="${Y(ry)-8}" fill="#334155" font-size="8"
         text-anchor="middle">L${lv+1}</text>`;
     });
   }
-  s += `<text x="${X(m.col_xs[0])}" y="${Y(m.rack_y)-30}" fill="#475569" font-size="10"
-    text-anchor="middle">放置货架（4 类型列 x 3 层）</text>`;
-  // 置物台 / 供料管 / 回收位
-  s += `<rect x="${X(m.staging[0])-22}" y="${Y(m.staging[1])-22}" width="44" height="44"
+  s += `<rect x="${X(m.staging[0])-20}" y="${Y(m.staging[1])-20}" width="40" height="40"
     fill="#132a1e" stroke="#22c55e" rx="4" stroke-dasharray="4 3"/>
-    <text x="${X(m.staging[0])}" y="${Y(m.staging[1])+30}" fill="#22c55e" font-size="10"
+    <text x="${X(m.staging[0])}" y="${Y(m.staging[1])+28}" fill="#22c55e" font-size="9"
     text-anchor="middle">置物台</text>`;
-  s += `<circle cx="${X(m.recycle[0])}" cy="${Y(m.recycle[1])}" r="14" fill="none"
+  s += `<circle cx="${X(m.recycle[0])}" cy="${Y(m.recycle[1])}" r="12" fill="none"
     stroke="#a16207" stroke-dasharray="3 3"/>
-    <text x="${X(m.recycle[0])}" y="${Y(m.recycle[1])+28}" fill="#a16207" font-size="10"
+    <text x="${X(m.recycle[0])}" y="${Y(m.recycle[1])+24}" fill="#a16207" font-size="9"
     text-anchor="middle">回收位</text>`;
-  // 物料圆点（待命=来料架，识别中=置物台，搬运=跟随龙门，已入位=货架列）
   for (const p of d.plates) {
-    if (p.status === 'stock') continue;      // 未生成：不画（底板下方停料）
+    if (p.status === 'stock') continue;
     const pulse = p.status === 'held' ? ` stroke="#fbbf24" stroke-width="3"` : "";
-    const dim = "";
-    s += `<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="13" fill="${TC[p.type]}"${pulse}${dim}/>
-      <text x="${X(p.x)}" y="${Y(p.y)+4}" fill="#0b1220" font-size="11" font-weight="bold"
+    s += `<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="11" fill="${TC[p.type]}"${pulse}/>
+      <text x="${X(p.x)}" y="${Y(p.y)+4}" fill="#0b1220" font-size="10" font-weight="bold"
       text-anchor="middle">${p.id}</text>`;
   }
-  // 龙门十字
   const gx = X(d.gantry.x), gy = Y(d.gantry.y);
-  s += `<line x1="${gx-16}" y1="${gy}" x2="${gx+16}" y2="${gy}" stroke="#fbbf24" stroke-width="2"/>
-    <line x1="${gx}" y1="${gy-16}" x2="${gx}" y2="${gy+16}" stroke="#fbbf24" stroke-width="2"/>
-    <circle cx="${gx}" cy="${gy}" r="9" fill="none" stroke="#fbbf24" stroke-width="2"/>`;
+  s += `<line x1="${gx-14}" y1="${gy}" x2="${gx+14}" y2="${gy}" stroke="#fbbf24" stroke-width="2"/>
+    <line x1="${gx}" y1="${gy-14}" x2="${gx}" y2="${gy+14}" stroke="#fbbf24" stroke-width="2"/>
+    <circle cx="${gx}" cy="${gy}" r="8" fill="none" stroke="#fbbf24" stroke-width="2"/>`;
   document.getElementById("map").innerHTML = s;
 }
+
+function age(v, unit) {
+  if (v === null || v === undefined) return `<span class="off">未连接</span>`;
+  return (v < 2.0 ? `<span class="on">在线 ${v.toFixed(1)}s</span>`
+                  : `<span class="off">超时 ${v.toFixed(1)}s</span>`);
+}
+
 async function tick() {
   try {
     const r = await fetch("/api/state"); const d = await r.json();
+    lastState = d;
     document.getElementById("s-ok").textContent = d.score.ok;
     document.getElementById("s-err").textContent = d.score.wrong + d.score.timeout;
     document.getElementById("s-rest").textContent = d.score.pending;
@@ -533,32 +676,52 @@ async function tick() {
     const banner = document.getElementById("banner");
     banner.style.display = vis ? "block" : "none";
     banner.textContent = vis;
-    banner.className = d.last_vision && d.cur_slot &&
-      d.slots[d.cur_slot-1] && d.slots[d.cur_slot-1].got == d.last_vision ? "ok" : "vis";
+    banner.className = (d.last_vision && d.cur_slot && d.slots[d.cur_slot-1]
+                        && d.slots[d.cur_slot-1].got == d.last_vision) ? "ok" : "vis";
     for (const s of d.slots) {
       const el = document.getElementById("slot-" + s.id);
       el.className = "slot " + s.status;
       el.querySelector(".gt").textContent =
-        s.got ? ("判 " + TN[s.got]) : (s.status === "timeout" ? "未识别" : "");
+        s.got ? ("判 " + TN[s.got]) : (s.status === "timeout" ? "未识别" : ("真 " + TN[s.true_type]));
     }
     drawMap(d);
+    for (const a of ["x","y","z"]) {
+      const mm = (d.gantry[a] * 1000);
+      document.getElementById(a + "-now").textContent = mm.toFixed(1);
+      if (editing !== a) document.getElementById(a + "-in").value = mm.toFixed(1);
+    }
+    const sys = d.sys || {};
+    if (sys.manual !== undefined && sys.manual !== sysManual) { sysManual = sys.manual; paintManual(); }
+    document.getElementById("st-img").innerHTML = age(sys.img_age);
+    document.getElementById("st-scene").innerHTML = age(sys.scene_age);
+    document.getElementById("st-joint").innerHTML = age(sys.joint_age);
+    document.getElementById("st-rack").innerHTML =
+      `<span class="${sys.rack_cams === sys.rack_cams_total ? 'on' : 'off'}">`
+      + (sys.rack_cams || 0) + " / " + (sys.rack_cams_total || 12) + "</span>";
+    document.getElementById("st-mode").textContent = sys.manual ? "手动调试" : "自动巡视";
+    document.getElementById("st-port").textContent = "127.0.0.1:" + (sys.port || 8080);
+    document.getElementById("spd-in").value = (sys.speed || 0.2).toFixed(2);
     const log = document.getElementById("log");
-    log.innerHTML = d.events.slice().reverse()
-      .map(([t, x]) => `<div class="${x.includes("正确（") ? "e-ok" :
-        (x.includes("错误") || x.includes("超时") || x.includes("未识别") ? "e-bad" : "e-info")}">[${t}] ${x}</div>`)
-      .join("");
-  } catch (e) { /* 节点未起时静默重试 */ }
+    const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 24;
+    log.innerHTML = (d.events || []).map(([t, txt]) => {
+      const cls = txt.includes("正确") ? "e-ok" : (txt.includes("错误") || txt.includes("超时") ? "e-bad" : "e-info");
+      return `<div class="${cls}">${t} ${txt}</div>`;
+    }).join("");
+    if (atBottom) log.scrollTop = log.scrollHeight;
+  } catch (e) { /* 后端重启中，下一拍再试 */ }
 }
-setInterval(tick, 400); tick();
-</script></body></html>"""
+tick(); setInterval(tick, 500);
+</script>
+</body></html>"""
 
 
 class DashboardHTTP:
     """把 ScoreState 与两路相机帧以 HTTP 暴露出去（只绑 127.0.0.1）。"""
 
-    def __init__(self, state, port, move_cam):
+    def __init__(self, state, port, move_cam, cmd=None):
         self.state = state
-        self.move_cam = move_cam          # (dict) -> None，自由摄像机控制
+        self.move_cam = move_cam
+        self.cmd = cmd or (lambda body: (False, "no cmd"))          # (dict) -> None，自由摄像机控制
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *args):   # 静默访问日志，别刷 ROS 日志
@@ -591,6 +754,16 @@ class DashboardHTTP:
                 if self.path == "/api/reset":
                     self.server.state.reset()
                     self._send(200, b'{"ok":true}', "application/json")
+                elif self.path == "/api/cmd":
+                    try:
+                        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])) or b"{}")
+                        ok, info = self.server.cmd(body)
+                        self._send(200 if ok else 400,
+                                   json.dumps({"ok": ok, "info": info}, ensure_ascii=False).encode(),
+                                   "application/json")
+                    except Exception as e:                            # noqa: BLE001
+                        self._send(400, json.dumps({"ok": False, "info": str(e)}).encode(),
+                                   "application/json")
                 elif self.path == "/api/cam":
                     try:
                         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
@@ -624,6 +797,7 @@ class DashboardHTTP:
         self.httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
         self.httpd.state = state
         self.httpd.move_cam = move_cam
+        self.httpd.cmd = self.cmd
         self.httpd.hub_ee = FrameHub()      # 末端相机
         self.httpd.hub_scene = FrameHub()   # 自由摄像机
         self.httpd.hub_rack = FrameHub()    # 库位监视墙（12 格合成图）
@@ -648,6 +822,7 @@ class ScoreNode(Node):
         super().__init__("aic_score_node")
         layout_yaml = self.declare_parameter("layout_yaml", "").value
         port = int(self.declare_parameter("http_port", 8080).value)
+        self.port = port
         self.world = self.declare_parameter("world", "aic_warehouse").value
         # 这些话题原来「声明了但没用」，订阅处写死常量；现场改话题名会静默失效。
         task_topic = self.declare_parameter("task_topic", "/control/material_task").value
@@ -682,7 +857,7 @@ class ScoreNode(Node):
                             reliability=ReliabilityPolicy.BEST_EFFORT)
         from sensor_msgs.msg import JointState
         self.create_subscription(JointState, self.get_parameter(
-            "joint_state_topic").value, self.state.on_joint, js_qos)
+            "joint_state_topic").value, self._on_joint, js_qos)
         img_qos = QoSProfile(depth=1, history=HistoryPolicy.KEEP_LAST,
                              reliability=ReliabilityPolicy.BEST_EFFORT)
         self.create_subscription(Image, image_topic, self._on_image, img_qos)
@@ -707,10 +882,29 @@ class ScoreNode(Node):
             self.create_subscription(Empty, "/sim/detach_{:02d}".format(s),
                                      lambda m, s=s: self.state.on_grip(s, False), 10)
 
+        # ---- 手动调试 / 平台控制（对应官方控制面板 2/3/5/6 区）----
+        self.manual_on = False
+        self.manual_speed = 0.20
+        self.cmd_pub = {
+            "manual": self.create_publisher(Bool, "/control/manual", 10),
+            "jog": self.create_publisher(Vector3, "/control/jog", 10),
+            "speed": self.create_publisher(Float64, "/control/speed", 10),
+            "home": self.create_publisher(Empty, "/control/home", 10),
+            "spawn": self.create_publisher(UInt8, "/control/spawn", 10),
+            "trigger": self.create_publisher(Empty, "/vision/trigger", 10),
+        }
+        self.attach_pub = {s: self.create_publisher(Empty, "/sim/attach_{:02d}".format(s), 10)
+                           for s in range(1, len(types) + 1)}
+        self.detach_pub = {s: self.create_publisher(Empty, "/sim/detach_{:02d}".format(s), 10)
+                           for s in range(1, len(types) + 1)}
+        self._t_img = self._t_scene = self._t_joint = 0.0
+        self._t_rack = {}
+        self.create_timer(1.0, self._update_status)
+
         # 1 Hz 检查末位点是否卡在「识别中」（第 12 位没有下一条 GOTO 可依赖）
         self.create_timer(1.0, lambda: self.state.check_timeout(self.visit_timeout_s))
 
-        self.dash = DashboardHTTP(self.state, port, self._move_cam)
+        self.dash = DashboardHTTP(self.state, port, self._move_cam, self._on_cmd)
         self.dash.start()
         # 合成线程必须等 dash 建好再起（否则第一拍会 AttributeError: 'dash'）
         threading.Thread(target=self._rack_wall_loop, daemon=True,
@@ -736,6 +930,94 @@ class ScoreNode(Node):
             return yaml.safe_load(f)
 
     # ---------- 自由摄像机 ----------
+    def _on_joint(self, msg):
+        self._t_joint = time.monotonic()
+        self.state.on_joint(msg)
+
+    def _update_status(self):
+        now = time.monotonic()
+        rack_alive = sum(1 for t in self._t_rack.values() if now - t < 3.0)
+        self.state.extra = {
+            "manual": self.manual_on,
+            "speed": round(self.manual_speed, 2),
+            "img_age": None if not self._t_img else round(now - self._t_img, 1),
+            "scene_age": None if not self._t_scene else round(now - self._t_scene, 1),
+            "joint_age": None if not self._t_joint else round(now - self._t_joint, 1),
+            "rack_cams": rack_alive,
+            "rack_cams_total": self.rack_cols * self.rack_rows,
+            "port": self.port,
+        }
+
+    def _on_cmd(self, body):
+        """看板右侧控制面板的动作分发（官方面板 2/3/5 区的对应实现）。
+
+        返回 (ok, info)。所有动作都是「发一条话题就返回」，不等结果——
+        结果由状态轮询回显（XYZ 数值、日志、判分格）。
+        """
+        act = str(body.get("action", "")).strip().lower()
+        try:
+            if act == "manual":
+                on = bool(body.get("on"))
+                m = Bool(); m.data = on
+                self.cmd_pub["manual"].publish(m)
+                self.manual_on = on
+                return True, "手动模式" + ("已开启（自动任务暂停）" if on else "已关闭")
+            if act == "jog":
+                m = Vector3()
+                for a in ("x", "y", "z"):
+                    v = body.get(a)
+                    m.__setattr__(a, float("nan") if v is None else float(v))
+                self.cmd_pub["jog"].publish(m)
+                return True, "已下发目标位置"
+            if act == "speed":
+                v = max(0.02, min(0.60, float(body.get("value", 0.20))))
+                m = Float64(); m.data = v
+                self.cmd_pub["speed"].publish(m)
+                self.manual_speed = v
+                return True, "速度 %.2f m/s" % v
+            if act == "home":
+                self.cmd_pub["home"].publish(Empty())
+                return True, "回原点"
+            if act == "spawn":
+                snap = self.state.snapshot()
+                target = body.get("id")
+                if target is None:
+                    rest = [p["id"] for p in snap["plates"] if p["status"] == "stock"]
+                    if not rest:
+                        return False, "没有待生成的物料（12 块都已上过台面）"
+                    target = rest[0]
+                m = UInt8(); m.data = int(target)
+                self.cmd_pub["spawn"].publish(m)
+                return True, "生成物料 %02d -> 置物台" % int(target)
+            if act in ("grab", "release"):
+                snap = self.state.snapshot()
+                want = "staged" if act == "grab" else "held"
+                ids = [p["id"] for p in snap["plates"] if p["status"] == want]
+                if not ids:
+                    return False, ("置物台上没有待抓物料" if act == "grab" else "吸盘上没夹着物料")
+                pid = int(ids[0])
+                (self.attach_pub if act == "grab" else self.detach_pub)[pid].publish(Empty())
+                return True, ("吸附 material %02d" if act == "grab" else "释放 material %02d") % pid
+            if act == "photo":
+                self.cmd_pub["trigger"].publish(Empty())
+                return True, "已触发拍照识别"
+            if act == "reset":
+                self.state.reset()
+                return True, "判分与物料状态已复位"
+            if act == "exit":
+                threading.Thread(target=self._shutdown, daemon=True).start()
+                return True, "看板正在退出（仿真仍在运行，Ctrl-C 结束 launch）"
+            return False, "未知动作：%s" % act
+        except Exception as exc:                                      # noqa: BLE001
+            return False, "命令失败：%s" % exc
+
+    def _shutdown(self):
+        try:
+            self.dash.stop()
+        finally:
+            time.sleep(0.3)
+            rclpy.shutdown()
+
     def _move_cam(self, body):
         """预设机位 / 相对平移。子进程调 ign service，不阻塞 HTTP/ROS 线程。"""
         with self.cam_lock:
@@ -793,6 +1075,7 @@ class ScoreNode(Node):
         except Exception as e:                                        # noqa: BLE001
             self.get_logger().warn("[dashboard] 图像转换失败: %s" % e, throttle_duration_sec=5.0)
             return
+        self._t_img = time.monotonic()
         self.dash.publish_frame(self._overlay(frame), scene=False)
 
     def _on_scene_image(self, msg):
@@ -801,6 +1084,7 @@ class ScoreNode(Node):
         except Exception as e:                                        # noqa: BLE001
             self.get_logger().warn("[dashboard] 场景图转换失败: %s" % e, throttle_duration_sec=5.0)
             return
+        self._t_scene = time.monotonic()
         self.dash.publish_frame(frame, scene=True)
 
     # ---------- 库位监视墙 ----------
@@ -813,6 +1097,7 @@ class ScoreNode(Node):
             return
         with self.rack_lock:
             self.rack_frames[sid] = frame
+        self._t_rack[sid] = time.monotonic()
 
     def _compose_rack_wall(self):
         """把 12 路格口相机拼成 4 列 x 3 层的一张图（层 3 在上，与现场视角一致）。

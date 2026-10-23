@@ -38,13 +38,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from plate_detector import DetectorParams, detect          # noqa: E402
 from defect_classifier import TYPE_NAMES, classify         # noqa: E402
 
-# ---------- 中文口径（与赛题/文档一致：1=划痕 2=污渍 3=缺角 4=孔洞） ----------
-CN_NAME = {1: "划痕", 2: "污渍", 3: "缺角", 4: "孔洞"}
+# ---------- 中文口径（按官方平台说明：1=划痕 2=污渍 3=破损 4=孔洞；
+#            赛题规则里第 3 类写作「缺角」，是同一类） ----------
+CN_NAME = {1: "划痕", 2: "污渍", 3: "破损", 4: "孔洞"}
 EN_NAME = {1: "scratch", 2: "stain", 3: "chip", 4: "hole"}
 # 每类的判据一句话（对应 defect_classifier.DEFAULT_RULES，改阈值要同步改这里）
 CRITERIA = {
     4: "圆度≥0.70 且 0.008≤面积比≤0.045 且 亮度落差≥100；贴边时以「斑内近黑像素占比≥0.05」兜底",
-    3: "半径比≥0.68 且 长宽比≤5.0 且 面积比≥0.020",
+    3: "填充率≤0.62 且 长宽比≤6.0 且 面积比 0.004~0.060（盘面折线裂纹）",
     1: "长宽比≥12.0 且 圆度≤0.25",
     2: "兜底判据：取「面积×圆度」最大的连通域",
 }
@@ -154,7 +155,7 @@ def annotate(gray, res):
 def translate_why(why):
     """classify() 的理由串翻成中文（前缀是判据名，后面是数值）。"""
     table = (("hole frac", "孔洞判据：面积比"), ("hole core", "孔洞判据：近黑核心"),
-             ("chip ", "缺角判据："), ("scratch ", "划痕判据："), ("stain ", "污渍判据："),
+             ("chip ", "破损判据："), ("scratch ", "划痕判据："), ("stain ", "污渍判据："),
              ("no candidate", "无可用候选"))
     for en, cn in table:
         if why.startswith(en):
@@ -195,7 +196,7 @@ def build(frames_dir, out_path, per_type=3, feat_csv="", team=""):
     d.text((MARGIN, 30), "视觉识别图集", font=_font(46), fill=INK)
     d.text((MARGIN, 88), "第八届全球校园人工智能算法精英大赛 · 算法应用赛 · 视觉逻辑算法应用赛"
                          "（区域赛提交）", font=_font(19), fill=INK2)
-    meta = "圆形铁片四类缺陷：划痕 / 污渍 / 缺角 / 孔洞    样本来源：本队 Gazebo 仿真相机 640×480"
+    meta = "圆形铁片四类缺陷：划痕 / 污渍 / 破损 / 孔洞    样本来源：本队 Gazebo 仿真相机 640×480"
     if team:
         meta = team + "    " + meta
     for i, seg in enumerate(wrap(d, meta, _font(16), width - MARGIN * 2)):

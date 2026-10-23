@@ -48,6 +48,7 @@ import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from geometry_msgs.msg import Vector3
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool, Empty, Float64, UInt8
 
@@ -152,6 +153,18 @@ class GantryController(Node):
         trigger_topic = self.declare_parameter("trigger_topic", "/vision/trigger").value
         self.trigger_pub = self.create_publisher(Empty, trigger_topic, 10)
         self.create_subscription(MaterialTask, task_topic, self._on_task, 10)
+
+        # ---- 手动调试（看板右侧面板 / 官方控制面板 2 区）----
+        # 手动模式：暂停自动队列，三轴按「速度 x dt」逐拍逼近目标，不直接用
+        # JointPositionController 的阶跃（那样会瞬移，示教手感全无）。
+        self.manual = False
+        self.manual_speed = 0.20
+        self.manual_target = {"x": 0.0, "y": 0.0, "z": 0.0}
+        self.create_subscription(Bool, "/control/manual", self._on_manual, 10)
+        self.create_subscription(Vector3, "/control/jog", self._on_jog, 10)
+        self.create_subscription(Float64, "/control/speed", self._on_speed, 10)
+        self.create_subscription(Empty, "/control/home", self._on_home, 10)
+        self.create_subscription(UInt8, "/control/spawn", self._on_spawn, 10)
 
         # 就绪握手：decision 侧 control_wait_ready=true 时等这条 true 才开跑。
         # 必须周期重发——决策端是 volatile 订阅，只发一次会被后启动的节点错过。
@@ -287,6 +300,11 @@ class GantryController(Node):
     def _on_task(self, msg):
         action = (msg.action or "").strip().upper()
         slot = int(msg.slot_id)
+        if self.manual:
+            self.get_logger().warn(
+                "[sim/control] 手动模式下忽略任务 %s slot=%d（先关手动）" % (action, slot),
+                throttle_duration_sec=3.0)
+            return
         kind = int(msg.material_type)
         self.get_logger().info(
             "[sim/control] 收到任务 %s slot=%d type=%d visit=%d"
@@ -417,6 +435,66 @@ class GantryController(Node):
         self._picked = True
         return steps
 
+    # ------------------------------------------------------------- 手动调试
+    def _on_manual(self, msg):
+        want = bool(msg.data)
+        if want == self.manual:
+            return
+        self.manual = want
+        if want:
+            self.manual_target = dict(self.pos)
+            dropped = len(self.steps) + sum(len(q) for q in self.queue)
+            self.steps.clear()
+            self.queue.clear()
+            self.active = None
+            self.busy = False
+            self.get_logger().warn(
+                "[sim/control] 进入手动模式：自动队列已清空（丢弃 %d 步）；"
+                "如果吸盘上还夹着料，先用「放置」或 /sim/detach 放掉" % dropped)
+        else:
+            self.get_logger().info("[sim/control] 退出手动模式，恢复自动流程")
+
+    def _on_jog(self, msg):
+        if not self.manual:
+            self.get_logger().warn(
+                "[sim/control] 收到点动但不在手动模式（先发 /control/manual true）",
+                throttle_duration_sec=5.0)
+            return
+        for a in AXES:
+            v = float(getattr(msg, a))
+            if v == v and abs(v) < 5.0:          # 过滤 NaN / 离谱值
+                self.manual_target[a] = _clamp(v, LIMITS[a])
+
+    def _on_speed(self, msg):
+        self.manual_speed = _clamp(float(msg.data), (0.02, 0.60))
+
+    def _on_home(self, msg):
+        self.manual_target = {"x": 0.0, "y": 0.0, "z": self.travel_z}
+        self.get_logger().info("[sim/control] 手动回原点")
+
+    def _on_spawn(self, msg):
+        """手动「生成物料」：把指定编号的物料 set_pose 到置物台。"""
+        mat = int(msg.data)
+        if not 1 <= mat <= self.layout.cols * self.layout.rows:
+            self.get_logger().warn("[sim/control] 生成物料编号越界：%d" % mat)
+            return
+        sx, sy, sz = self._staging_xy
+        ok = self._set_pose("material_{:02d}".format(mat), sx, sy,
+                            sz + self.plate_th / 2.0 + 0.002)
+        self.get_logger().info("[sim/control] 手动生成物料 %02d（set_pose %s）"
+                               % (mat, "成功" if ok else "失败"))
+
+    def _manual_tick(self):
+        for a in AXES:
+            tgt = float(self.manual_target.get(a, self.pos[a]))
+            v = self.z_speed if a == "z" else self.manual_speed
+            step = max(1e-4, v * self.dt)
+            d = tgt - self.pos[a]
+            if abs(d) <= step:
+                self.pos[a] = tgt
+            else:
+                self.pos[a] += step if d > 0 else -step
+
     def _home_steps(self):
         return [
             _Step("move", targets={"z": self.travel_z}, speed=self.z_speed),
@@ -438,6 +516,10 @@ class GantryController(Node):
     def _tick(self):
         self._maybe_release()
         self._watch_sim_alive()
+        if self.manual:
+            self._manual_tick()
+            self._publish_all()
+            return
         if self.active is None:
             if not self.steps:
                 if not self.queue:

@@ -526,10 +526,15 @@ def defect_rng(layout, slot_id, seed=None):
 
 
 def defect_visual(mtype, r, d, rng):
-    """返回缺陷可视的 (name, pose 串, geometry 片段, material 片段)。
+    """返回该类缺陷的视觉列表 [(name, pose, geometry, material), ...]。
 
-    rng=None 时走 M2 的固定几何。格式精度按原值对齐（0.004 / 0.436 / 0.0025 …），
-    因此关掉随机化后生成物与 M2 逐字节一致 —— 这条本身就是回归检查。
+    官方 VirtualNext 的四类标记都是**画在盘面上的形状**，不是把盘体挖掉：
+      1 划痕 = 细长直条（可长可短）
+      2 污渍 = 实心圆斑
+      3 破损 = 细折线（∧ / L 形裂纹），两条细臂在顶点相接
+      4 孔洞 = 小圆（描边/实心都有，这里用深色小圆）
+    「破损」不再用压在盘缘的深色方块假装缺角 —— 官方样本里没有边缘缺口，
+    而是盘面上的一道折线裂纹（见平台说明书 §2.2.2 的样本图）。
     """
     if mtype == 1:          # 划痕：细长薄条，绕 Z 任意朝向
         if rng is None:
@@ -541,10 +546,10 @@ def defect_visual(mtype, r, d, rng):
             ang = rng.uniform(0.0, 2.0 * math.pi)
             rad = rng.uniform(0.0, lim)
             cx, cy, yaw = rad * math.cos(ang), rad * math.sin(ang), rng.uniform(-math.pi, math.pi)
-        return ("defect_scratch",
-                "{:.3f} {:.3f} {:.5f} 0 0 {:.3f}".format(cx, cy, d + 0.0004, yaw),
-                "<box><size>{:.3f} {:.4f} 0.0008</size></box>".format(ln, wd),
-                "<ambient>0.20 0.20 0.21 1</ambient><diffuse>0.24 0.24 0.25 1</diffuse>")
+        return [("defect_scratch",
+                 "{:.3f} {:.3f} {:.5f} 0 0 {:.3f}".format(cx, cy, d + 0.0004, yaw),
+                 "<box><size>{:.3f} {:.4f} 0.0008</size></box>".format(ln, wd),
+                 "<ambient>0.20 0.20 0.21 1</ambient><diffuse>0.24 0.24 0.25 1</diffuse>")]
     if mtype == 2:          # 污渍：扁圆深色斑
         if rng is None:
             cx, cy, rad2 = 0.008, 0.004, 0.012
@@ -554,24 +559,33 @@ def defect_visual(mtype, r, d, rng):
             ang = rng.uniform(0.0, 2.0 * math.pi)
             rad = rng.uniform(0.0, lim)
             cx, cy = rad * math.cos(ang), rad * math.sin(ang)
-        return ("defect_stain",
-                "{:.3f} {:.3f} {:.5f} 0 0 0".format(cx, cy, d + 0.0002),
-                "<cylinder><radius>{:.3f}</radius><length>0.0006</length></cylinder>".format(rad2),
-                "<ambient>0.16 0.13 0.10 1</ambient><diffuse>0.20 0.16 0.12 1</diffuse>")
-    if mtype == 3:          # 缺角：压在盘缘的深色方块（视觉上像被咬掉）
+        return [("defect_stain",
+                 "{:.3f} {:.3f} {:.5f} 0 0 0".format(cx, cy, d + 0.0002),
+                 "<cylinder><radius>{:.3f}</radius><length>0.0006</length></cylinder>".format(rad2),
+                 "<ambient>0.16 0.13 0.10 1</ambient><diffuse>0.20 0.16 0.12 1</diffuse>")]
+    if mtype == 3:          # 破损：两道细臂组成的折线裂纹（∧ 形）
+        u = 1.0 if rng is None else rng.uniform(*JITTER[3]["size"])
+        arm = 0.017 * u                      # 单臂长
+        wid = 0.0022 * u                     # 线宽
+        half = math.radians(62.0)            # 两臂夹角的一半 ~124° 顶角
         if rng is None:
-            cx, cy, sa, sb = 0.032, -0.020, 0.024, 0.022
+            vx, vy, base = 0.004, -0.002, math.radians(20.0)
         else:
-            u = rng.uniform(*JITTER[3]["size"])
-            sa, sb = 0.024 * u, 0.022 * u
-            # 径向必须落在 0.90~0.96r：往里挪就不是缺角，往外挪整块掉出盘外
-            rad = rng.uniform(0.90, 0.96) * r
+            lim = max(0.0, 0.60 * r)
             ang = rng.uniform(0.0, 2.0 * math.pi)
-            cx, cy = rad * math.cos(ang), rad * math.sin(ang)
-        return ("defect_chip",
-                "{:.3f} {:.3f} {:.5f} 0 0 0".format(cx, cy, d + 0.0006),
-                "<box><size>{:.3f} {:.3f} 0.0012</size></box>".format(sa, sb),
-                "<ambient>0.10 0.11 0.13 1</ambient><diffuse>0.14 0.15 0.17 1</diffuse>")
+            rad = rng.uniform(0.0, lim)
+            vx, vy = rad * math.cos(ang), rad * math.sin(ang)
+            base = rng.uniform(-math.pi, math.pi)
+        out = []
+        for tag, th in (("a", base - half), ("b", base + half)):
+            cx = vx + 0.5 * arm * math.cos(th)
+            cy = vy + 0.5 * arm * math.sin(th)
+            out.append((
+                "defect_break_" + tag,
+                "{:.4f} {:.4f} {:.5f} 0 0 {:.4f}".format(cx, cy, d + 0.0004, th),
+                "<box><size>{:.4f} {:.4f} 0.0008</size></box>".format(arm, wid),
+                "<ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse>"))
+        return out
     # 孔洞：小深色圆
     if rng is None:
         cx, cy, rad4 = -0.004, 0.012, 0.0055
@@ -581,10 +595,10 @@ def defect_visual(mtype, r, d, rng):
         ang = rng.uniform(0.0, 2.0 * math.pi)
         rad = rng.uniform(0.0, lim)
         cx, cy = rad * math.cos(ang), rad * math.sin(ang)
-    return ("defect_hole",
-            "{:.3f} {:.3f} {:.5f} 0 0 0".format(cx, cy, d + 0.0002),
-            "<cylinder><radius>{:.4f}</radius><length>0.0006</length></cylinder>".format(rad4),
-            "<ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse>")
+    return [("defect_hole",
+             "{:.3f} {:.3f} {:.5f} 0 0 0".format(cx, cy, d + 0.0002),
+             "<cylinder><radius>{:.4f}</radius><length>0.0006</length></cylinder>".format(rad4),
+             "<ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse>")]
 
 
 def plate_model(layout, slot, mtype, jitter_seed=None):
@@ -634,13 +648,13 @@ def plate_model(layout, slot, mtype, jitter_seed=None):
 
     ind = "        "
     rng = defect_rng(layout, slot["id"], jitter_seed)
-    vname, vpose, vgeo, vmat = defect_visual(mtype, r, d, rng)
-    out.append(
-        ind + '<visual name="{}">\n'.format(vname)
-        + ind + "  <pose>{}</pose>\n".format(vpose)
-        + ind + "  <geometry>{}</geometry>\n".format(vgeo)
-        + ind + "  <material>{}</material>\n".format(vmat)
-        + ind + "</visual>\n")
+    for vname, vpose, vgeo, vmat in defect_visual(mtype, r, d, rng):
+        out.append(
+            ind + '<visual name="{}">\n'.format(vname)
+            + ind + "  <pose>{}</pose>\n".format(vpose)
+            + ind + "  <geometry>{}</geometry>\n".format(vgeo)
+            + ind + "  <material>{}</material>\n".format(vmat)
+            + ind + "</visual>\n")
 
     out.append("      </link>\n")
     out.append("    </model>\n\n")

@@ -1,8 +1,8 @@
-"""四类缺陷判据（1=划痕 2=污渍 3=缺角 4=孔洞）。
+"""四类缺陷判据（1=划痕 2=污渍 3=破损 4=孔洞）。
 
 判据顺序按「最不容易被混淆」到「最容易被混淆」排：
   A 孔洞：小而圆、比盘面暗一大截（贯穿孔，反射率最低）
-  B 缺角：成块暗区压在盘缘上
+  B 破损：盘面上的一道折线裂纹（细、弯、填不满外接框）
   C 划痕：极细长的直条
   D 污渍：盘内大片圆润灰斑（兜底）
 
@@ -12,10 +12,10 @@
 
 阈值在 24 张仿真帧（12 张 M1 样本 + 12 张 M2 运行帧）上整定，圆精修后的实测分布：
   hole    frac 0.020~0.021  circ 0.97~0.98  drop 123~126   （阈值 frac<=0.045, drop>=100）
-  chip    frac 0.053~0.064  rad 0.77~0.78   elong 2.8~3.1  （阈值 frac>=0.020, elong<=5）
+  break   fill 0.3~0.5       elong 1.5~3.0   frac 0.010~0.030（阈值 fill<=0.62, elong<=6）
   scratch elong 23.4~23.5   circ 0.11                      （阈值 elong>=12, circ<=0.25）
   stain   frac 0.094~0.099  circ 0.92~0.94                 （兜底）
-侧壁暗沿 elong 7.4~11.3 全部 > 5，不会误判缺角；四条判据的实际间隔都在 2 倍以上。
+侧壁暗沿 elong 7.4~11.3 全部 > 6，不会误判破损；四条判据的实际间隔都在 2 倍以上。
 """
 
 TYPE_SCRATCH = 1
@@ -26,7 +26,7 @@ TYPE_HOLE = 4
 TYPE_NAMES = {
     TYPE_SCRATCH: "scratch",
     TYPE_STAIN: "stain",
-    TYPE_CHIP: "chip",
+    TYPE_CHIP: "chip",   # 官方称「破损」：盘面折线裂纹
     TYPE_HOLE: "hole",
 }
 
@@ -37,15 +37,14 @@ DEFAULT_RULES = {
     "hole_drop_min": 100.0,
     # 贴边孔洞的兜底判据：斑内近黑像素（< level-120）占比。实测孔 0.23~0.75，其余 0.000。
     "hole_core_min": 0.05,
-    "chip_rad_min": 0.68,
-    "chip_elong_max": 5.0,
-    # 缺角面积下限。取 0.020（不贴着实测值）：frac 用**估计出的盘半径**归一化。
-    # 圆精修（plate_detector.refine_circle）之后半径稳定到亚像素（组内 std 0.1~0.5 px），
-    # 缺角实测 frac 收在 0.053~0.064，阈值有 2.6 倍余量。
-    # 仍要给最坏情况留口子：精修被拒时退回 Hough 的整像素圆（半径可差 ±9%），
-    # 那时 0.93r 掩膜会把压在盘缘的缺角切掉大半，frac 掉到 0.030。
-    # 真正挡住「圆柱侧壁暗沿」的是 elong<=5（侧壁实测 7.4~11.3），不是面积。
-    "chip_frac_min": 0.020,
+    # 破损 = 盘面上的一道折线裂纹（两条细臂，∧ 形）。它和划痕一样细，但**填不满自己的
+    # 最小外接矩形**：直线 fill≈0.85~0.95，圆斑≈0.78，折线只有 0.3~0.5。
+    # 侧壁暗沿的 elong 7.4~11.3（>6）会被 elongation 闸门挡掉。
+    "break_fill_max": 0.62,
+    "break_elong_max": 6.0,
+    "break_rad_max": 0.85,
+    "break_frac_min": 0.004,
+    "break_frac_max": 0.060,
     "scratch_elong_min": 12.0,
     "scratch_circ_max": 0.25,
 }
@@ -80,13 +79,14 @@ def classify(comps, rules=None):
             return TYPE_HOLE, "hole core={:.2f}（贴边，几何量不可靠）".format(
                 c["core_frac"])
 
-    # B 缺角
+    # B 破损（盘面折线裂纹）：细、弯、填不满外接框
     for c in comps:
-        if (c["rad"] >= r["chip_rad_min"]
-                and c["elong"] <= r["chip_elong_max"]
-                and c["frac"] >= r["chip_frac_min"]):
-            return TYPE_CHIP, "chip rad={:.2f} frac={:.3f} elong={:.1f}".format(
-                c["rad"], c["frac"], c["elong"])
+        if (c["fill"] <= r["break_fill_max"]
+                and c["elong"] <= r["break_elong_max"]
+                and c["rad"] <= r["break_rad_max"]
+                and r["break_frac_min"] <= c["frac"] <= r["break_frac_max"]):
+            return TYPE_CHIP, "break fill={:.2f} elong={:.1f} rad={:.2f} frac={:.3f}".format(
+                c["fill"], c["elong"], c["rad"], c["frac"])
 
     # C 划痕
     for c in comps:

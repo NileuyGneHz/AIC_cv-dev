@@ -165,6 +165,12 @@ def extract_defects(gray, plate, p):
         perim = cv2.arcLength(cnt, True)
         circ = 4.0 * np.pi * area / (perim * perim) if perim > 0 else 0.0
         rw, rh = cv2.minAreaRect(cnt)[1]
+        rect_area = max(1.0, float(rw * rh))
+        # fill = 像素面积 / 最小外接矩形面积。直线/圆斑都能填满自己的外接框（≈0.8~0.95），
+        # 折线（破损的 ∧ 形）只有 ≈0.3~0.5 —— 这是把「破损」和「划痕/污渍」分开的主特征。
+        fill = float(area) / rect_area
+        hull_area = cv2.contourArea(cv2.convexHull(cnt))
+        solidity = float(area) / hull_area if hull_area > 1.0 else 1.0
         mean = float(gray[labels == i].mean())
         # 近黑像素占比：只在这个连通域内统计（不看 bbox，免得把周围亮台面算进来）
         comp_px = gray[labels == i]
@@ -175,6 +181,8 @@ def extract_defects(gray, plate, p):
             "circ": float(circ),
             "elong": float(max(rw, rh) / max(1.0, min(rw, rh))),
             "rad": float(np.hypot(cents[i][0] - cx, cents[i][1] - cy) / r),
+            "fill": fill,
+            "solidity": solidity,
             "mean": mean,
             "drop": level - mean,
             "core_frac": core_frac,
