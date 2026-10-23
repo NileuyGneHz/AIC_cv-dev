@@ -993,7 +993,7 @@
       <static>false</static>
       <pose>0 0 0 0 0 0</pose>
 
-      <!-- ============================== base：固定于世界 ============================== -->
+      <!-- ============================== base：底板上的 Y 导轨 ============================== -->
       <link name="base">
         <inertial>
           <mass>120.0</mass>
@@ -1003,186 +1003,195 @@
           </inertia>
         </inertial>
 
-        <!-- 四根立柱（M3：站在整机底板上表面 0.02 上） -->
-        <visual name="post_fl">
-          <pose>0.50 -0.30 0.32 0 0 0</pose>
-          <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
-          <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.34 0.35 0.37 1</diffuse>
-            <specular>0.1 0.1 0.1 1</specular></material>
+        <!-- 两条 Y 向导轨（官方：立柱骑在底板左侧的两条白色导轨上前后走） -->
+        <visual name="rail_l">
+          <pose>-0.525 0.02 0.045 0 0 0</pose>
+          <geometry><box><size>0.030 0.90 0.05</size></box></geometry>
+          <material><ambient>0.62 0.64 0.66 1</ambient><diffuse>0.74 0.76 0.78 1</diffuse>
+            <specular>0.5 0.5 0.5 1</specular></material>
         </visual>
-        <visual name="post_fr">
-          <pose>0.50 0.30 0.32 0 0 0</pose>
-          <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
-          <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.34 0.35 0.37 1</diffuse></material>
-        </visual>
-        <visual name="post_bl">
-          <pose>-0.50 -0.30 0.32 0 0 0</pose>
-          <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
-          <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.34 0.35 0.37 1</diffuse></material>
-        </visual>
-        <visual name="post_br">
-          <pose>-0.50 0.30 0.32 0 0 0</pose>
-          <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
-          <material><ambient>0.30 0.31 0.33 1</ambient><diffuse>0.34 0.35 0.37 1</diffuse></material>
+        <visual name="rail_r">
+          <pose>-0.475 0.02 0.045 0 0 0</pose>
+          <geometry><box><size>0.030 0.90 0.05</size></box></geometry>
+          <material><ambient>0.62 0.64 0.66 1</ambient><diffuse>0.74 0.76 0.78 1</diffuse></material>
         </visual>
 
-        <!-- 两条 X 向导轨 -->
-        <visual name="rail_front">
-          <pose>0 -0.30 0.585 0 0 0</pose>
-          <geometry><box><size>1.10 0.05 0.05</size></box></geometry>
-          <material><ambient>0.55 0.57 0.60 1</ambient><diffuse>0.62 0.64 0.67 1</diffuse>
-            <specular>0.4 0.4 0.4 1</specular></material>
+        <!-- Y 电机：底座左前侧，电机轴沿 Y（官方：偏左放置，不顶在立柱正下方） -->
+        <visual name="motor_y">
+          <pose>-0.50 -0.40 0.095 0 0 0</pose>
+          <geometry><box><size>0.10 0.11 0.10</size></box></geometry>
+          <material><ambient>0.10 0.10 0.12 1</ambient><diffuse>0.14 0.14 0.16 1</diffuse></material>
         </visual>
-        <visual name="rail_back">
-          <pose>0 0.30 0.585 0 0 0</pose>
-          <geometry><box><size>1.10 0.05 0.05</size></box></geometry>
-          <material><ambient>0.55 0.57 0.60 1</ambient><diffuse>0.62 0.64 0.67 1</diffuse></material>
+        <visual name="coupler_y">
+          <pose>-0.50 -0.335 0.095 1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.028</radius><length>0.03</length></cylinder></geometry>
+          <material><ambient>0.30 0.55 0.16 1</ambient><diffuse>0.38 0.68 0.22 1</diffuse></material>
         </visual>
 
-        <collision name="post_fl_col">
-          <pose>0.50 -0.30 0.32 0 0 0</pose>
-          <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
+        <collision name="rail_l_col">
+          <pose>-0.525 0.02 0.045 0 0 0</pose>
+          <geometry><box><size>0.030 0.90 0.05</size></box></geometry>
         </collision>
-        <collision name="post_fr_col">
-          <pose>0.50 0.30 0.32 0 0 0</pose>
-          <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
-        </collision>
-        <collision name="post_bl_col">
-          <pose>-0.50 -0.30 0.32 0 0 0</pose>
-          <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
-        </collision>
-        <collision name="post_br_col">
-          <pose>-0.50 0.30 0.32 0 0 0</pose>
-          <geometry><box><size>0.05 0.05 0.60</size></box></geometry>
+        <collision name="rail_r_col">
+          <pose>-0.475 0.02 0.045 0 0 0</pose>
+          <geometry><box><size>0.030 0.90 0.05</size></box></geometry>
         </collision>
       </link>
 
-      <!-- ============================== X 横梁 ============================== -->
-      <link name="x_carriage">
-        <pose>0 0 0.585 0 0 0</pose>
+      <!-- ============================== 立柱（Y 向移动） ============================== -->
+      <link name="column">
+        <pose>-0.50 0 0 0 0 0</pose>
+        <inertial>
+          <mass>10.0</mass>
+          <inertia>
+            <ixx>0.40</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>0.40</iyy><iyz>0</iyz><izz>0.03</izz>
+          </inertia>
+        </inertial>
+
+        <!-- 立柱底座滑块：跨在两条导轨上 -->
+        <visual name="saddle">
+          <pose>0 0.02 0.075 0 0 0</pose>
+          <geometry><box><size>0.09 0.14 0.07</size></box></geometry>
+          <material><ambient>0.20 0.21 0.23 1</ambient><diffuse>0.26 0.27 0.30 1</diffuse></material>
+        </visual>
+
+        <!-- 立柱本体（白色铝型材） -->
+        <visual name="post">
+          <pose>0 0.02 0.36 0 0 0</pose>
+          <geometry><box><size>0.06 0.06 0.56</size></box></geometry>
+          <material><ambient>0.74 0.76 0.78 1</ambient><diffuse>0.84 0.86 0.88 1</diffuse>
+            <specular>0.5 0.5 0.5 1</specular></material>
+        </visual>
+
+        <!-- 顶部 Z 电机 + 绿色联轴器（官方：立柱最顶端，轴垂直向下） -->
+        <visual name="motor_z">
+          <pose>0 0.02 0.705 0 0 0</pose>
+          <geometry><box><size>0.075 0.075 0.13</size></box></geometry>
+          <material><ambient>0.10 0.10 0.12 1</ambient><diffuse>0.14 0.14 0.16 1</diffuse></material>
+        </visual>
+        <visual name="coupler_z">
+          <pose>0 0.02 0.633 0 0 0</pose>
+          <geometry><cylinder><radius>0.030</radius><length>0.026</length></cylinder></geometry>
+          <material><ambient>0.30 0.55 0.16 1</ambient><diffuse>0.38 0.68 0.22 1</diffuse></material>
+        </visual>
+
+        <collision name="post_col">
+          <pose>0 0.02 0.36 0 0 0</pose>
+          <geometry><box><size>0.06 0.06 0.56</size></box></geometry>
+        </collision>
+      </link>
+
+      <!-- ============================== 横梁（Z 向升降） ============================== -->
+      <link name="beam">
+        <pose>0 0 0.545 0 0 0</pose>
+        <!-- 关掉重力：Z 是竖直轴，位置控制器是速度伺服，上电初始化阶段会先被重力
+             拉到下限再爬回来（实测直接卡在下限）。恢复真实重力时要配制动/前馈。 -->
+        <gravity>false</gravity>
         <inertial>
           <mass>6.0</mass>
           <inertia>
-            <ixx>0.5</ixx><ixy>0</ixy><ixz>0</ixz>
-            <iyy>0.25</iyy><iyz>0</iyz><izz>0.5</izz>
+            <ixx>0.55</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>0.20</iyy><iyz>0</iyz><izz>0.55</izz>
           </inertia>
         </inertial>
+
+        <!-- 横梁本体：世界 x -0.51..0.55（左端接立柱，右端悬到货架上方） -->
         <visual name="beam">
-          <geometry><box><size>0.06 0.72 0.06</size></box></geometry>
-          <material><ambient>0.45 0.47 0.50 1</ambient><diffuse>0.52 0.54 0.57 1</diffuse></material>
+          <pose>0.005 0 0 0 0 0</pose>
+          <geometry><box><size>1.10 0.055 0.055</size></box></geometry>
+          <material><ambient>0.66 0.68 0.70 1</ambient><diffuse>0.78 0.80 0.82 1</diffuse>
+            <specular>0.5 0.5 0.5 1</specular></material>
         </visual>
-        <visual name="gusset_l">
-          <pose>-0.10 0 0.06 0 0 0</pose>
-          <geometry><box><size>0.08 0.06 0.06</size></box></geometry>
-          <material><ambient>0.40 0.42 0.45 1</ambient><diffuse>0.46 0.48 0.51 1</diffuse></material>
+
+        <!-- 与立柱的绿色连接座（随横梁上下滑） -->
+        <visual name="column_bracket">
+          <pose>-0.50 0 0 0 0 0</pose>
+          <geometry><box><size>0.10 0.09 0.115</size></box></geometry>
+          <material><ambient>0.30 0.55 0.16 1</ambient><diffuse>0.38 0.68 0.22 1</diffuse></material>
         </visual>
-        <visual name="gusset_r">
-          <pose>0.10 0 0.06 0 0 0</pose>
-          <geometry><box><size>0.08 0.06 0.06</size></box></geometry>
-          <material><ambient>0.40 0.42 0.45 1</ambient><diffuse>0.46 0.48 0.51 1</diffuse></material>
+
+        <!-- 横梁左端的 X 电机 + 绿色联轴器（官方：悬空外突） -->
+        <visual name="motor_x">
+          <pose>-0.60 0 0 0 0 0</pose>
+          <geometry><box><size>0.10 0.075 0.075</size></box></geometry>
+          <material><ambient>0.10 0.10 0.12 1</ambient><diffuse>0.14 0.14 0.16 1</diffuse></material>
         </visual>
+        <visual name="coupler_x">
+          <pose>-0.503 0 0 0 1.5708 0</pose>
+          <geometry><cylinder><radius>0.026</radius><length>0.028</length></cylinder></geometry>
+          <material><ambient>0.30 0.55 0.16 1</ambient><diffuse>0.38 0.68 0.22 1</diffuse></material>
+        </visual>
+
         <collision name="beam_col">
-          <geometry><box><size>0.06 0.72 0.06</size></box></geometry>
+          <pose>0.005 0 0 0 0 0</pose>
+          <geometry><box><size>1.10 0.055 0.055</size></box></geometry>
         </collision>
       </link>
 
-      <!-- ============================== Y 小车 ============================== -->
-      <link name="y_carriage">
+      <!-- ============================== 滑台 + 末端吸盘（X 向移动） ============================== -->
+      <link name="tool_head">
         <pose>0 0 0.545 0 0 0</pose>
+        <!-- 同上：竖直方向不参与重力，否则会把横梁拽出稳态误差 -->
+        <gravity>false</gravity>
         <inertial>
           <mass>3.0</mass>
           <inertia>
             <ixx>0.02</ixx><ixy>0</ixy><ixz>0</ixz>
-            <iyy>0.02</iyy><iyz>0</iyz><izz>0.02</izz>
-          </inertia>
-        </inertial>
-        <visual name="body">
-          <geometry><box><size>0.10 0.10 0.05</size></box></geometry>
-          <material><ambient>0.20 0.45 0.65 1</ambient><diffuse>0.24 0.52 0.74 1</diffuse></material>
-        </visual>
-        <collision name="body_col">
-          <geometry><box><size>0.10 0.10 0.05</size></box></geometry>
-        </collision>
-      </link>
-
-      <!-- ============================== Z 轴 + 末端工具 + 相机 ============================== -->
-      <link name="z_carriage">
-        <pose>0 0 0.545 0 0 0</pose>
-        <!-- 关掉重力：Z 是竖直轴，位置控制器是速度伺服，上电初始化阶段会先被重力
-             拉到下限再爬回来（实测直接卡在下限）。仿真阶段不需要 Z 轴的自由落体，
-             关掉重力后位置保持完全由控制器负责。恢复真实重力时要配制动/前馈。 -->
-        <gravity>false</gravity>
-        <inertial>
-          <mass>2.0</mass>
-          <inertia>
-            <ixx>0.03</ixx><ixy>0</ixy><ixz>0</ixz>
-            <iyy>0.03</iyy><iyz>0</iyz><izz>0.01</izz>
+            <iyy>0.02</iyy><iyz>0</iyz><izz>0.01</izz>
           </inertia>
         </inertial>
 
-        <!-- Z 向立柱（刻意偏到 -X 侧：让出相机光路，否则相机会埋在立柱实体里） -->
-        <visual name="rod">
-          <pose>-0.075 0 -0.20 0 0 0</pose>
-          <geometry><box><size>0.045 0.045 0.40</size></box></geometry>
-          <material><ambient>0.72 0.74 0.76 1</ambient><diffuse>0.80 0.82 0.84 1</diffuse>
-            <specular>0.6 0.6 0.6 1</specular></material>
+        <!-- 绿色滑台 -->
+        <visual name="slider">
+          <pose>0 0 0.004 0 0 0</pose>
+          <geometry><box><size>0.10 0.105 0.075</size></box></geometry>
+          <material><ambient>0.30 0.55 0.16 1</ambient><diffuse>0.38 0.68 0.22 1</diffuse></material>
         </visual>
 
-        <!-- 工具支架：两根横条（M3 纯装饰、无碰撞体 —— 相机已改为固定在置物台
-             正上方（gen_world.py 生成 ee_cam），吸盘不进光路，无需留中空） -->
-        <visual name="flange_bar_a">
-          <pose>-0.010 -0.035 -0.275 0 0 0</pose>
-          <geometry><box><size>0.10 0.02 0.015</size></box></geometry>
-          <material><ambient>0.35 0.36 0.38 1</ambient><diffuse>0.40 0.41 0.43 1</diffuse></material>
-        </visual>
-        <visual name="flange_bar_b">
-          <pose>-0.010 0.035 -0.275 0 0 0</pose>
-          <geometry><box><size>0.10 0.02 0.015</size></box></geometry>
-          <material><ambient>0.35 0.36 0.38 1</ambient><diffuse>0.40 0.41 0.43 1</diffuse></material>
+        <!-- Z 向直线导轨（滑台下垂，随滑台一起平移） -->
+        <visual name="z_rail">
+          <pose>0 0 -0.128 0 0 0</pose>
+          <geometry><box><size>0.035 0.035 0.25</size></box></geometry>
+          <material><ambient>0.70 0.72 0.74 1</ambient><diffuse>0.80 0.82 0.84 1</diffuse>
+            <specular>0.5 0.5 0.5 1</specular></material>
         </visual>
 
-        <!-- 真空吸盘：波纹管 + 吸口（z_joint=0 时吸口下沿世界 z=0.239，
-             即 sim_layout.yaml gantry.pad_z0；改这里必须同步改那个值） -->
+        <!-- 工具法兰 -->
+        <visual name="tool_plate">
+          <pose>0 0 -0.264 0 0 0</pose>
+          <geometry><box><size>0.09 0.07 0.012</size></box></geometry>
+          <material><ambient>0.35 0.36 0.38 1</ambient><diffuse>0.42 0.43 0.45 1</diffuse></material>
+        </visual>
+
+        <!-- 真空吸盘：波纹管 + 吸口（z_joint=0 时吸口下沿世界 z=0.239 = pad_z0） -->
         <visual name="suction_bellows">
-          <pose>-0.010 0 -0.294 0 0 0</pose>
-          <geometry><cylinder><radius>0.018</radius><length>0.022</length></cylinder></geometry>
+          <pose>0 0 -0.284 0 0 0</pose>
+          <geometry><cylinder><radius>0.018</radius><length>0.040</length></cylinder></geometry>
           <material><ambient>0.20 0.20 0.22 1</ambient><diffuse>0.26 0.26 0.28 1</diffuse></material>
         </visual>
         <visual name="suction_pad">
-          <pose>-0.010 0 -0.303 0 0 0</pose>
+          <pose>0 0 -0.303 0 0 0</pose>
           <geometry><cylinder><radius>0.020</radius><length>0.006</length></cylinder></geometry>
           <material><ambient>0.85 0.55 0.10 1</ambient><diffuse>0.92 0.62 0.12 1</diffuse></material>
         </visual>
 
-        <!-- M3：相机已移出龙门（固定在置物台正上方，gen_world.py 生成 ee_cam 模型，
-             话题仍是 /camera/image），末端只剩吸盘 -->
+        <collision name="slider_col">
+          <pose>0 0 0.004 0 0 0</pose>
+          <geometry><box><size>0.10 0.105 0.075</size></box></geometry>
+        </collision>
       </link>
 
       <!-- ============================== 关节 ============================== -->
-      <joint name="x_joint" type="prismatic">
-        <parent>base</parent>
-        <child>x_carriage</child>
-        <axis>
-          <xyz>1 0 0</xyz>
-          <limit>
-            <lower>-0.45</lower>
-            <upper>0.45</upper>
-            <effort>300</effort>
-            <velocity>0.35</velocity>
-          </limit>
-          <dynamics><damping>20</damping><spring_stiffness>0</spring_stiffness></dynamics>
-        </axis>
-      </joint>
-
+      <!-- Y：立柱沿导轨前后走（官方 Y 电机在底座左下） -->
       <joint name="y_joint" type="prismatic">
-        <parent>x_carriage</parent>
-        <child>y_carriage</child>
+        <parent>base</parent>
+        <child>column</child>
         <axis>
           <xyz>0 1 0</xyz>
           <limit>
             <lower>-0.24</lower>
-            <!-- 上限 0.24 -> 0.32：+Y 侧接了分类码放条（sim_layout.yaml place_zones）；
-                 横梁半长 0.36，够用，不需要加长横梁 -->
+            <!-- 上限 0.32：+Y 侧要到分拣货架第 3 层（y=0.31） -->
             <upper>0.32</upper>
             <effort>200</effort>
             <velocity>0.30</velocity>
@@ -1191,22 +1200,37 @@
         </axis>
       </joint>
 
+      <!-- Z：横梁随立柱内的丝杠升降（官方 Z 电机在立柱顶端） -->
       <joint name="z_joint" type="prismatic">
-        <parent>y_carriage</parent>
-        <child>z_carriage</child>
+        <parent>column</parent>
+        <child>beam</child>
         <axis>
           <xyz>0 0 1</xyz>
           <limit>
-            <!-- M3：吸盘基准 0.239，最低需求 = 置物台盘顶 0.106 → z=-0.133；
-                 收紧到 -0.20 留余量（M2 的 -0.42 是给旧夹爪几何的） -->
-            <!-- M3：上限 +0.03 —— 携料平移时盘底（pad_z0+travel_z-盘厚 = 0.253）
-                 必须跨过第 3 层围边顶（0.232）；下限 -0.20 覆盖最低取放位 -->
+            <!-- 吸盘基准 0.239，最低需求 = 置物台盘顶 0.106 → z=-0.133；
+                 下限 -0.20 留余量；上限 +0.03 让携料平移跨过第 3 层围边顶 0.232 -->
             <lower>-0.20</lower>
             <upper>0.03</upper>
             <effort>200</effort>
             <velocity>0.15</velocity>
           </limit>
           <dynamics><damping>15</damping><spring_stiffness>0</spring_stiffness></dynamics>
+        </axis>
+      </joint>
+
+      <!-- X：滑台沿横梁左右移（官方 X 电机在横梁最左端） -->
+      <joint name="x_joint" type="prismatic">
+        <parent>beam</parent>
+        <child>tool_head</child>
+        <axis>
+          <xyz>1 0 0</xyz>
+          <limit>
+            <lower>-0.42</lower>
+            <upper>0.45</upper>
+            <effort>300</effort>
+            <velocity>0.35</velocity>
+          </limit>
+          <dynamics><damping>20</damping><spring_stiffness>0</spring_stiffness></dynamics>
         </axis>
       </joint>
 
@@ -1225,13 +1249,9 @@
         <joint_name>z_joint</joint_name>
       </plugin>
 
-      <!-- 增益：p=20/d=0.6 时（初版）伺服极慢——375 mm 阶跃要 4.8 s 才追上、过冲 17.7 mm、
-           8.6 s 才停稳，导致控制侧「剖面走完就报到位」时实际差一格。实测 p=1600/d=200：
-           过冲 0.5 mm、约 1.9 s 进 ±1 mm。三轴质量不同（x 6 kg / y 3 kg / z 2 kg），
-           统一用这组偏硬的参数对三轴都稳定（z 另有 gravity=false）。 -->
-      <!-- joint_index 是「该关节内部的自由度序号」，不是模型里第几个关节：
-           三个关节都是单自由度，因此全部填 0。写成 0/1/2 时只有 x 能动，
-           y/z 会因为越界静默失效（踩过）。 -->
+      <!-- 增益 p=1600/d=200：实测 375 mm 阶跃过冲 0.5 mm、约 1.9 s 进 ±1 mm。
+           joint_index 是「该关节内部的自由度序号」，三个关节都是单自由度，全填 0；
+           写成 0/1/2 时只有 x 能动（踩过）。 -->
       <plugin filename="ignition-gazebo-joint-position-controller-system"
               name="ignition::gazebo::systems::JointPositionController">
         <joint_name>x_joint</joint_name>
@@ -1266,7 +1286,7 @@
       </plugin>
         <plugin filename="ignition-gazebo-detachable-joint-system"
               name="ignition::gazebo::systems::DetachableJoint">
-        <parent_link>z_carriage</parent_link>
+        <parent_link>tool_head</parent_link>
         <child_model>material_01</child_model>
         <child_link>disc</child_link>
         <attach_topic>/sim/attach_01</attach_topic>
@@ -1274,7 +1294,7 @@
       </plugin>
       <plugin filename="ignition-gazebo-detachable-joint-system"
               name="ignition::gazebo::systems::DetachableJoint">
-        <parent_link>z_carriage</parent_link>
+        <parent_link>tool_head</parent_link>
         <child_model>material_02</child_model>
         <child_link>disc</child_link>
         <attach_topic>/sim/attach_02</attach_topic>
@@ -1282,7 +1302,7 @@
       </plugin>
       <plugin filename="ignition-gazebo-detachable-joint-system"
               name="ignition::gazebo::systems::DetachableJoint">
-        <parent_link>z_carriage</parent_link>
+        <parent_link>tool_head</parent_link>
         <child_model>material_03</child_model>
         <child_link>disc</child_link>
         <attach_topic>/sim/attach_03</attach_topic>
@@ -1290,7 +1310,7 @@
       </plugin>
       <plugin filename="ignition-gazebo-detachable-joint-system"
               name="ignition::gazebo::systems::DetachableJoint">
-        <parent_link>z_carriage</parent_link>
+        <parent_link>tool_head</parent_link>
         <child_model>material_04</child_model>
         <child_link>disc</child_link>
         <attach_topic>/sim/attach_04</attach_topic>
@@ -1298,7 +1318,7 @@
       </plugin>
       <plugin filename="ignition-gazebo-detachable-joint-system"
               name="ignition::gazebo::systems::DetachableJoint">
-        <parent_link>z_carriage</parent_link>
+        <parent_link>tool_head</parent_link>
         <child_model>material_05</child_model>
         <child_link>disc</child_link>
         <attach_topic>/sim/attach_05</attach_topic>
@@ -1306,7 +1326,7 @@
       </plugin>
       <plugin filename="ignition-gazebo-detachable-joint-system"
               name="ignition::gazebo::systems::DetachableJoint">
-        <parent_link>z_carriage</parent_link>
+        <parent_link>tool_head</parent_link>
         <child_model>material_06</child_model>
         <child_link>disc</child_link>
         <attach_topic>/sim/attach_06</attach_topic>
@@ -1314,7 +1334,7 @@
       </plugin>
       <plugin filename="ignition-gazebo-detachable-joint-system"
               name="ignition::gazebo::systems::DetachableJoint">
-        <parent_link>z_carriage</parent_link>
+        <parent_link>tool_head</parent_link>
         <child_model>material_07</child_model>
         <child_link>disc</child_link>
         <attach_topic>/sim/attach_07</attach_topic>
@@ -1322,7 +1342,7 @@
       </plugin>
       <plugin filename="ignition-gazebo-detachable-joint-system"
               name="ignition::gazebo::systems::DetachableJoint">
-        <parent_link>z_carriage</parent_link>
+        <parent_link>tool_head</parent_link>
         <child_model>material_08</child_model>
         <child_link>disc</child_link>
         <attach_topic>/sim/attach_08</attach_topic>
@@ -1330,7 +1350,7 @@
       </plugin>
       <plugin filename="ignition-gazebo-detachable-joint-system"
               name="ignition::gazebo::systems::DetachableJoint">
-        <parent_link>z_carriage</parent_link>
+        <parent_link>tool_head</parent_link>
         <child_model>material_09</child_model>
         <child_link>disc</child_link>
         <attach_topic>/sim/attach_09</attach_topic>
@@ -1338,7 +1358,7 @@
       </plugin>
       <plugin filename="ignition-gazebo-detachable-joint-system"
               name="ignition::gazebo::systems::DetachableJoint">
-        <parent_link>z_carriage</parent_link>
+        <parent_link>tool_head</parent_link>
         <child_model>material_10</child_model>
         <child_link>disc</child_link>
         <attach_topic>/sim/attach_10</attach_topic>
@@ -1346,7 +1366,7 @@
       </plugin>
       <plugin filename="ignition-gazebo-detachable-joint-system"
               name="ignition::gazebo::systems::DetachableJoint">
-        <parent_link>z_carriage</parent_link>
+        <parent_link>tool_head</parent_link>
         <child_model>material_11</child_model>
         <child_link>disc</child_link>
         <attach_topic>/sim/attach_11</attach_topic>
@@ -1354,7 +1374,7 @@
       </plugin>
       <plugin filename="ignition-gazebo-detachable-joint-system"
               name="ignition::gazebo::systems::DetachableJoint">
-        <parent_link>z_carriage</parent_link>
+        <parent_link>tool_head</parent_link>
         <child_model>material_12</child_model>
         <child_link>disc</child_link>
         <attach_topic>/sim/attach_12</attach_topic>

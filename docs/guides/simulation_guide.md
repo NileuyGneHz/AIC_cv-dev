@@ -1,4 +1,4 @@
-# Gazebo 仿真（M4）：来料架 3x4 + 三轴龙门（吸盘）+ 识别后分拣入架
+# Gazebo 仿真（M5）：单立柱三轴龙门（吸盘）+ 生成物料 + 识别后分拣入垂直货架
 
 > 本文是**原理深读文档**（架构、实现细节、23 个坑的来龙去脉）；
 > 装环境 / 构建 / 跑仿真 / 自验 / 配置 / 排障的**操作手册**见 `simulation_manual.md`，
@@ -40,12 +40,11 @@ aic_behavior_tree (C++)          本包（仿真侧）
 world frame = warehouse（与 MaterialTask.header.frame_id 一致）
 +X = 操作者视角「右」（类型列 1→4）    +Y = 「远」（货架在 +Y 侧）
 +Z = 上
-放置货架: 4 列（列 c = 缺陷类型 c） x 3 层（层沿 +Z，层间距 0.06）
+放置货架: 4 列（列 c = 缺陷类型 c） x 3 层，**垂直立面**（同一深度 y = 0.31）
   col 1..4 → x = -0.375, -0.125, +0.125, +0.375
-  第 L 层 y = 0.31 - (L-1)*0.11（阶梯错开，防止吸盘升降撞上层托盘）
-  第 L 层托盘面 z = 0.10 + (L-1)*0.06
+  第 L 层托盘面 z = 0.10 + (L-1)*0.06（0.10 / 0.16 / 0.22）
 置物台（取料源）: (0.30, -0.15)，台面 z = 0.10
-供料管（12 块物料开机叠放）: (-0.42, -0.15)
+停料托板（12 块物料）: 底板下方 z = -0.10，俯视与相机都看不见
 回收位（识别失败的物料）: (-0.10, -0.15)
 物料 φ80×6 mm，落到台面/托盘后中心 z = 面高 + 0.003
 ```
@@ -54,18 +53,31 @@ world frame = warehouse（与 MaterialTask.header.frame_id 一致）
 > M3 对齐官方 VirtualNext 平台：置物台上料 → 拍照识别 → 吸盘取料 → 放入货架
 > 对应类型列。货架每格只放一块（官方摆放要求，不堆叠）。
 
-**物料供给**（`magazine` 段）：12 块物料在世界加载时就全部存在（否则
-DetachableJoint 绑不上，见坑 13），开机叠在供料管里；每轮 GOTO 用
-`ign service set_pose` 把 `material_NN` 传送到置物台。识别失败没被取走的物料，
-下一轮 GOTO 时先送到回收位，保证台面同时只有一块。
+**物料供给**（`park` 段）：12 块物料在世界加载时就全部存在（否则
+DetachableJoint 绑不上，见坑 13），开局停在**底板下方的停料托板**上；每轮 GOTO
+用 `ign service set_pose` 把 `material_NN` 传送到置物台——观察效果等同官方平台的
+「生成物料」。识别失败没被取走的物料，下一轮 GOTO 时先送到回收位，保证台面同时
+只有一块。
 
-龙门（`models/aic_gantry/model.sdf`）：
+龙门（`models/aic_gantry/model.sdf`）——**单立柱悬臂**，轴向与官方平台一致：
+
+```text
+base（底板上的两条 Y 导轨 + Y 电机，x ≈ -0.50）
+  └─ y_joint（立柱沿 Y 走）→ column（立柱 + 顶部 Z 电机）
+        └─ z_joint（横梁升降）→ beam（横梁 + 左端 X 电机）
+              └─ x_joint（滑台沿梁走）→ tool_head（绿色滑台 + 吸盘）
+```
 
 | 关节 | 轴 | 行程 | 零位含义 |
 |---|---|---|---|
-| `x_joint` | +X | −0.45 … +0.45 | 0 = 置物台/货架中线 |
-| `y_joint` | +Y | −0.24 … **+0.32** | 覆盖供料管(−0.15)、置物台(−0.15)、货架(+0.31) |
-| `z_joint` | +Z | **−0.20** … 0 | 0 = 行进高度（吸口下沿 0.239 m）；−0.133 = 取料/放料位 |
+| `x_joint` | +X | −0.42 … +0.45 | 0 = 置物台/货架中线（**值 = 世界 x**） |
+| `y_joint` | +Y | −0.24 … **+0.32** | 值 = 世界 y；覆盖置物台(−0.15)、货架(+0.31) |
+| `z_joint` | +Z | **−0.20** … +0.03 | 0 = 行进高度（吸口下沿 0.239 m）；−0.133 = 取料/放料位 |
+
+立柱在 x = −0.50：必须让开货架首列托盘（x 从 −0.435 起），否则 Y 走到 0.2 m
+就被托盘挡住（实测「到位超时 8 s，目标 0.31 实际 0.20，速度 0」）。
+`beam` 与 `tool_head` 两个 link 都 `<gravity>false</gravity>`：竖直方向由位置控制器
+承担，带重力会留 p_gain 稳态误差。
 
 末端：法兰座 + 吸盘（吸口下沿 `pad_z0 = 0.239 m`）。相机已**移出龙门**，
 改为固定式 `ee_cam`（装在置物台正上方，`camera.mount`），因此 GOTO 停在
@@ -73,10 +85,8 @@ DetachableJoint 绑不上，见坑 13），开机叠在供料管里；每轮 GOT
 HANDLE 才平移到正上方下探。
 图像方向：**右 = +X（列增大），上 = −Y**。
 
-![末端相机俯视图](assets/sim_camera_view.png)
-
-> 上面是行进高度下 3 号位点（污渍）的实拍：中间灰色圆盘是铁片，盘内棕色圆斑是
-> 「污渍」缺陷，左右两根金色的是夹指，四周深灰是库位地贴。
+> 实拍请跑 `scripts/capture_storyboard.py` 重新抓：`docs/guides/assets/sim_camera_view.png`
+> 是 M2 夹爪 + 阶梯货架时代的旧图，末端与层位都已变。
 > 该图由 `ros2 run aic_gazebo_sim sim_snapshot.py` 直接抓取。
 
 ## 3. 控制侧实现（gantry_controller.py）
@@ -96,10 +106,10 @@ HANDLE 才平移到正上方下探。
     `SkipSlot` 的语义。单次约 12.8 s（M3 实测），比 M2 的 4–5 s 长得多。
   - `HOME`：回零位（预留）
 - **抓取靠 `DetachableJoint`**：世界由 `gen_world.py` 生成时，把龙门**内联**进世界，
-  再给 12 块铁片各挂一个插件（`parent_link=z_carriage`、`child_model=material_XX`、
+  再给 12 块铁片各挂一个插件（`parent_link=tool_head`、`child_model=material_XX`、
   话题 `/sim/attach_XX` / `/sim/detach_XX`）。控制器发 `std_msgs/Empty` 经桥转成
   `ignition.msgs.Empty` 即完成夹/放。
-  **开机必须主动松爪**：插件在首次 PreUpdate 就把 12 块铁片全焊到 z_carriage 上（坑 13）。
+  **开机必须主动松爪**：插件在首次 PreUpdate 就把 12 块铁片全焊到 `tool_head` 上（坑 13）。
 - **到位判定是闭环的**：剖面走完后进入「保持 setpoint」阶段，等
   `/world/aic_warehouse/model/aic_gantry/joint_state`（经桥转成 `sensor_msgs/JointState`）
   里目标轴的 `position` 进 `pos_tol`、`velocity` 进 `vel_tol`，连续 `confirm_ticks` 拍成立
@@ -231,7 +241,7 @@ ros2 launch aic_gazebo_sim sim_decision.launch.py invalid_rate:=0.3
    早期把它误判成「不回传」，于是用「剖面 + 定时」判到位，代价见坑 11。
 5. **Z 轴（竖直 prismatic）会被重力拉到底**：位置控制器是速度伺服，
    在 controller 起来之前的窗口里 Z 会滑到下限，之后**卡在下限爬不回来**。
-   M1 直接给 `z_carriage` 关掉重力（`<gravity>false</gravity>`），
+   M1 直接给竖直连杆（旧 `z_carriage`，现 `beam` + `tool_head`）关掉重力（`<gravity>false</gravity>`），
    位置保持完全交给控制器；恢复真实重力时要配制动/重力前馈。
    另外控制器**必须每拍都下发**（不只是运动时），否则 Z 会继续下沉。
 6. **ros_gz_bridge 方向符**：`topic@ros_type]gz_type` 是 ROS→GZ（右括号），
@@ -268,7 +278,7 @@ ros2 launch aic_gazebo_sim sim_decision.launch.py invalid_rate:=0.3
 13. **`DetachableJoint` 不是「等 attach 话题才连」——它在首次 `PreUpdate` 就把 child 焊上**
     （最坑的一个，2026-10-20）。Fortress 版插件只认 `parent_link` / `child_model` /
     `child_link` / `attach_topic` / `detach_topic` / `output_topic` 六个字段，
-    **没有 `initial_attach` 开关**。12 个插件 = 12 块铁片开机全挂在 z_carriage 上：
+    **没有 `initial_attach` 开关**。12 个插件 = 12 块铁片开机全挂在末端连杆（现 `tool_head`）上：
     静置 Z 被压到 **−3.675 mm**，正好等于 `12 × 0.05 kg × 9.81 ÷ p_gain(1600)`，
     而速度恒为 0 —— 闭环判据（pos + vel 双阈值）永远等不到，每段 Z 都「到位超时 8 s」。
     更隐蔽的是**指令一下发就动不了**：铁片焊在末端，Z 8 s 只走了 0.2 mm（目标 −0.04，

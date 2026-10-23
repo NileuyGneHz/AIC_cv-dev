@@ -36,7 +36,7 @@ M3 轮次语义（官方 VirtualNext 平台：置物台上料 -> 拍照 -> 吸�
   pos_tol/vel_tol   到位阈值（默认取 sim_layout.yaml 的 gantry 段）
   settle_s          0.15 s（仅在拿不到关节反馈时退化成定时等待）
   handle_dwell_s    0.35 s（抓取停留，夹爪动作占位）
-  release_rounds    4（开机广播几轮 detach，把 12 块铁片从 z_carriage 上放开）
+  release_rounds    4（开机广播几轮 detach，把 12 块铁片从 tool_head（末端滑台）上放开）
   release_interval_s 0.4 s
   place_tol         0.015 m（放到码放格时允许的「触底静差」，来自同类型叠放）
 """
@@ -173,13 +173,13 @@ class GantryController(Node):
         # 开机松爪：DetachableJoint 在首次 PreUpdate 就把 child 焊到 parent_link 上
         # （Fortress 版没有 initial_attach 之类的开关，实测插件只认 parent_link /
         #  child_model / child_link / attach_topic / detach_topic / output_topic 六个字段）。
-        # 12 个插件 = 12 块铁片一开始全挂在 z_carriage 上：静置 z 被压到 -3.675 mm，
+        # 12 个插件 = 12 块铁片一开始全挂在 tool_head 上：静置 z 被压到 -3.675 mm，
         # 正好等于 12*0.05kg*9.81 / p_gain(1600)，且速度恒为 0 —— 闭环判据永远等不到。
         # 对策：开机后广播几轮 detach 把它们放回台面。
         # 两条约束：
         #   1) 通知 /control/ready 必须等松爪跑完再发。实测决策端在控制器启动后
         #      0.02 s 就发来第一条 GOTO，若只按「收到任务就停发」来保护，松爪会被
-        #      永久跳过 —— 12 块铁片继续焊在 z_carriage 上，Z 轴 8 s 只走 0.2 mm
+        #      永久跳过 —— 12 块铁片继续焊在 tool_head 上，Z 轴 8 s 只走 0.2 mm
         #      （日志：目标 -0.04 / 实际 -0.0002 / 误差 39.8 mm）。
         #      而「松爪要不要开始」用第一帧 joint_state 判定：它同时证明
         #      ros_gz_bridge 已经起来、ROS->GZ 方向的 24 个 gz 订阅也已建好
@@ -429,7 +429,7 @@ class GantryController(Node):
         """把三个轴的目标位置都发一遍。
 
         必须每拍都发（不只是运动时）：Z 轴是竖直 prismatic，控制器是速度伺服，
-        一旦停发，重力会把 Z 滑到下极限（实测 z_carriage 从 0.545 掉到 0.125，
+        一旦停发，重力会把 Z 滑到下极限（实测末端从 0.545 掉到 0.125，
         相机直接掉到地面以下）。持续下发 = 位置保持。
         """
         for axis in AXES:

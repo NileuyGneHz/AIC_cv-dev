@@ -414,7 +414,7 @@ def recycle_marker(layout):
 def ee_cam_model(layout):
     """末端相机（M3 固定式）：装在置物台正上方朝下，拍照在前、下探在后。
 
-    为什么从 z_carriage 挪到固定支架（对齐官方平台 img-006 的取景）：
+    为什么从末端连杆挪到固定支架（对齐官方平台 img-006 的取景）：
     吸盘下探取料时正好悬在盘上方 —— 相机若跟在吸盘后面，盘中心会被
     吸盘遮住（盘内缺陷判据全瞎）。固定式 + GOTO 停靠偏移位（staging.
     goto_offset_y）让吸盘让出光路，识别的是完整盘面。
@@ -591,7 +591,7 @@ def plate_model(layout, slot, mtype, jitter_seed=None):
     """一块圆形物料 + 该类缺陷的几何表达（M4：开局铺在来料架的格位上）。
 
     动态模型（有质量/碰撞/摩擦）：运行时被 set_pose 传送到置物台，
-    HANDLE 时由 DetachableJoint 吸附到 z_carriage（吸盘），放进货架格后松开。
+    HANDLE 时由 DetachableJoint 吸附到 tool_head（吸盘），放进货架格后松开。
     物料编号 = 来料架格位号（row-major），types[idx-1] 即该格类型。
     """
     plate = layout["plate"]
@@ -674,7 +674,7 @@ def gantry_model(layout, types, slots):
         plugs.append(
             '    <plugin filename="ignition-gazebo-detachable-joint-system"\n'
             '            name="ignition::gazebo::systems::DetachableJoint">\n'
-            "      <parent_link>z_carriage</parent_link>\n"
+            "      <parent_link>tool_head</parent_link>\n"
             "      <child_model>{}</child_model>\n"
             "      <child_link>disc</child_link>\n"
             "      <attach_topic>/sim/attach_{:02d}</attach_topic>\n"
