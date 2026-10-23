@@ -89,6 +89,8 @@ ros2 launch aic_dashboard dashboard.launch.py vision_backend:=trad gui:=true
 页面布局按官方 VirtualNext 控制窗口排：**左侧看画面，右侧做调试**。不需要点"开始"，
 起来就在跑；右侧的按钮是给现场调机用的，正常比赛不用碰。
 
+![看板布局：左侧全景+三联，右侧 6 个控制区](assets/dashboard.png)
+
 ```
 ┌────────────────────────────────────────────┬──────────────────┐
 │ 顶栏：正确 / 错误 / 剩余 + 当前位点          │                  │
