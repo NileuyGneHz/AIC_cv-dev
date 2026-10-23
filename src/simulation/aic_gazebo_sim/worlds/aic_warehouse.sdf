@@ -123,11 +123,6 @@
           <material><ambient>0.62 0.64 0.67 1</ambient><diffuse>0.72 0.74 0.77 1</diffuse></material>
         </visual>
         <!-- 第 1 层（z=0.10, y=0.31） -->
-        <visual name="beam_1">
-          <pose>0 0.2350 0.0880 0 0 0</pose>
-          <geometry><box><size>1.1 0.03 0.02</size></box></geometry>
-          <material><ambient>0.55 0.68 0.35 1</ambient><diffuse>0.62 0.76 0.42 1</diffuse></material>
-        </visual>
         <collision name="tray_1_col">
           <pose>-0.3750 0.3100 0.0980 0 0 0</pose>
           <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
@@ -245,11 +240,6 @@
           <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
         </visual>
         <!-- 第 2 层（z=0.16, y=0.31） -->
-        <visual name="beam_2">
-          <pose>0 0.2350 0.1480 0 0 0</pose>
-          <geometry><box><size>1.1 0.03 0.02</size></box></geometry>
-          <material><ambient>0.55 0.68 0.35 1</ambient><diffuse>0.62 0.76 0.42 1</diffuse></material>
-        </visual>
         <collision name="tray_5_col">
           <pose>-0.3750 0.3100 0.1580 0 0 0</pose>
           <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
@@ -367,11 +357,6 @@
           <material><ambient>0.22 0.24 0.27 1</ambient><diffuse>0.28 0.30 0.33 1</diffuse></material>
         </visual>
         <!-- 第 3 层（z=0.22, y=0.31） -->
-        <visual name="beam_3">
-          <pose>0 0.2350 0.2080 0 0 0</pose>
-          <geometry><box><size>1.1 0.03 0.02</size></box></geometry>
-          <material><ambient>0.55 0.68 0.35 1</ambient><diffuse>0.62 0.76 0.42 1</diffuse></material>
-        </visual>
         <collision name="tray_9_col">
           <pose>-0.3750 0.3100 0.2180 0 0 0</pose>
           <geometry><box><size>0.12 0.12 0.004</size></box></geometry>
@@ -630,7 +615,7 @@
         </sensor>
       </link>
     </model>
-    <!-- ===== 12 块圆形物料（开局铺在来料架 3x4 格位上，运行时逐块上料；类型 = materials.types[序号-1]）===== -->
+    <!-- ===== 12 块圆形物料（开局停在底板下方的停料托板上，运行时逐块 set_pose 上料；类型 = materials.types[序号-1]）===== -->
     <model name="material_01">
       <static>false</static>
       <pose>-0.4950 0.0000 -0.0960 0 0 0</pose>

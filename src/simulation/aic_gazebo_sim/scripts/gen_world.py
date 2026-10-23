@@ -273,14 +273,8 @@ def rack_shelf_model(layout):
             out.append(
                 '        <!-- 第 {lv} 层（z={z:.2f}, y={y:.2f}） -->\n'.format(
                     lv=s["level"], z=lz, y=ly))
-            out.append(
-                '        <visual name="beam_{lv}">\n'
-                "          <pose>0 {y:.4f} {z:.4f} 0 0 0</pose>\n"
-                "          <geometry><box><size>{w} 0.03 0.02</size></box></geometry>\n"
-                "          <material><ambient>0.55 0.68 0.35 1</ambient>"
-                "<diffuse>0.62 0.76 0.42 1</diffuse></material>\n"
-                "        </visual>\n".format(lv=s["level"], y=ly - tile / 2.0 - 0.015,
-                                             z=lz - 0.012, w=width))
+            # 前沿绿色装饰横杠已移除（用户 2026-10-23 要求）：纯 visual、
+            # 无 collision，删掉不影响放置判定。
         out.append(
             '        <collision name="tray_{id}_col">\n'
             "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
@@ -737,7 +731,7 @@ def build_sdf(layout, seed=None):
            staging_table_model(layout), material_park_model(layout),
            recycle_marker(layout), ee_cam_model(layout),
            camera_post_model(layout), scene_cam(layout)]
-    out.append("    <!-- ===== 12 块圆形物料（开局铺在来料架 3x4 格位上，运行时逐块上料；"
+    out.append("    <!-- ===== 12 块圆形物料（开局停在底板下方的停料托板上，运行时逐块 set_pose 上料；"
                "类型 = materials.types[序号-1]）===== -->\n")
     for s, t in zip(slots, types):
         out.append(plate_model(layout, s, t, seed))
