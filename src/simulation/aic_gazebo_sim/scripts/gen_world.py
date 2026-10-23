@@ -620,10 +620,16 @@ def plate_model(layout, slot, mtype, jitter_seed=None):
     ixx = mass * (3.0 * r * r + th * th) / 12.0
     izz = mass * r * r / 2.0
 
+    # 初始朝向跟随 jitter 流（停料区在底板下看不见；真正每轮的随机朝向
+    # 由控制器上料时给，见 gantry_controller._set_pose）。注意：yaw 先抽、
+    # 缺陷几何后抽 —— 同一 seed 下缺陷几何与旧版本会不同，阈值有余量不受影响。
+    rng0 = defect_rng(layout, slot["id"], jitter_seed)
+    yaw0 = rng0.uniform(0.0, 2.0 * math.pi) if rng0 else 0.0
+
     out = [
         '    <model name="{}">\n'.format(name),
         "      <static>false</static>\n",
-        "      <pose>{:.4f} {:.4f} {:.4f} 0 0 0</pose>\n".format(cx, cy, cz),
+        "      <pose>{:.4f} {:.4f} {:.4f} 0 0 {:.4f}</pose>\n".format(cx, cy, cz, yaw0),
         '      <link name="disc">\n',
         '        <inertial>\n',
         "          <mass>{}</mass>\n".format(mass),
@@ -647,7 +653,7 @@ def plate_model(layout, slot, mtype, jitter_seed=None):
     ]
 
     ind = "        "
-    rng = defect_rng(layout, slot["id"], jitter_seed)
+    rng = rng0          # 同一块铁片共用一条随机流（yaw 已在上面抽掉一次）
     for vname, vpose, vgeo, vmat in defect_visual(mtype, r, d, rng):
         out.append(
             ind + '<visual name="{}">\n'.format(vname)

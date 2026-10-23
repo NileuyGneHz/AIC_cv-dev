@@ -803,7 +803,7 @@
     <!-- ===== 12 块圆形物料（开局停在底板下方的停料托板上，运行时逐块 set_pose 上料；类型 = materials.types[序号-1]）===== -->
     <model name="material_01">
       <static>false</static>
-      <pose>-0.4950 0.0000 -0.0960 0 0 0</pose>
+      <pose>-0.4950 0.0000 -0.0960 0 0 0.0000</pose>
       <link name="disc">
         <inertial>
           <mass>0.05</mass>
@@ -834,7 +834,7 @@
 
     <model name="material_02">
       <static>false</static>
-      <pose>-0.4050 0.0000 -0.0960 0 0 0</pose>
+      <pose>-0.4050 0.0000 -0.0960 0 0 0.0000</pose>
       <link name="disc">
         <inertial>
           <mass>0.05</mass>
@@ -870,7 +870,7 @@
 
     <model name="material_03">
       <static>false</static>
-      <pose>-0.3150 0.0000 -0.0960 0 0 0</pose>
+      <pose>-0.3150 0.0000 -0.0960 0 0 0.0000</pose>
       <link name="disc">
         <inertial>
           <mass>0.05</mass>
@@ -901,7 +901,7 @@
 
     <model name="material_04">
       <static>false</static>
-      <pose>-0.2250 0.0000 -0.0960 0 0 0</pose>
+      <pose>-0.2250 0.0000 -0.0960 0 0 0.0000</pose>
       <link name="disc">
         <inertial>
           <mass>0.05</mass>
@@ -932,7 +932,7 @@
 
     <model name="material_05">
       <static>false</static>
-      <pose>-0.1350 0.0000 -0.0960 0 0 0</pose>
+      <pose>-0.1350 0.0000 -0.0960 0 0 0.0000</pose>
       <link name="disc">
         <inertial>
           <mass>0.05</mass>
@@ -963,7 +963,7 @@
 
     <model name="material_06">
       <static>false</static>
-      <pose>-0.0450 0.0000 -0.0960 0 0 0</pose>
+      <pose>-0.0450 0.0000 -0.0960 0 0 0.0000</pose>
       <link name="disc">
         <inertial>
           <mass>0.05</mass>
@@ -994,7 +994,7 @@
 
     <model name="material_07">
       <static>false</static>
-      <pose>0.0450 0.0000 -0.0960 0 0 0</pose>
+      <pose>0.0450 0.0000 -0.0960 0 0 0.0000</pose>
       <link name="disc">
         <inertial>
           <mass>0.05</mass>
@@ -1025,7 +1025,7 @@
 
     <model name="material_08">
       <static>false</static>
-      <pose>0.1350 0.0000 -0.0960 0 0 0</pose>
+      <pose>0.1350 0.0000 -0.0960 0 0 0.0000</pose>
       <link name="disc">
         <inertial>
           <mass>0.05</mass>
@@ -1061,7 +1061,7 @@
 
     <model name="material_09">
       <static>false</static>
-      <pose>0.2250 0.0000 -0.0960 0 0 0</pose>
+      <pose>0.2250 0.0000 -0.0960 0 0 0.0000</pose>
       <link name="disc">
         <inertial>
           <mass>0.05</mass>
@@ -1097,7 +1097,7 @@
 
     <model name="material_10">
       <static>false</static>
-      <pose>0.3150 0.0000 -0.0960 0 0 0</pose>
+      <pose>0.3150 0.0000 -0.0960 0 0 0.0000</pose>
       <link name="disc">
         <inertial>
           <mass>0.05</mass>
@@ -1128,7 +1128,7 @@
 
     <model name="material_11">
       <static>false</static>
-      <pose>0.4050 0.0000 -0.0960 0 0 0</pose>
+      <pose>0.4050 0.0000 -0.0960 0 0 0.0000</pose>
       <link name="disc">
         <inertial>
           <mass>0.05</mass>
@@ -1159,7 +1159,7 @@
 
     <model name="material_12">
       <static>false</static>
-      <pose>0.4950 0.0000 -0.0960 0 0 0</pose>
+      <pose>0.4950 0.0000 -0.0960 0 0 0.0000</pose>
       <link name="disc">
         <inertial>
           <mass>0.05</mass>

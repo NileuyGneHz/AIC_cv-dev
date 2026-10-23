@@ -41,6 +41,8 @@ M3 轮次语义（官方 VirtualNext 平台：置物台上料 -> 拍照 -> 吸�
   place_tol         0.015 m（放到码放格时允许的「触底静差」，来自同类型叠放）
 """
 import collections
+import math
+import random
 import subprocess
 import time
 
@@ -123,6 +125,10 @@ class GantryController(Node):
         #   place_lift：平推进格前的抬升量，需 > 格口围边高（否则推不进去）
         self.approach_dy = declare_number(self, "approach_dy", 0.12)
         self.place_lift = declare_number(self, "place_lift", 0.028)
+        # attach/detach 是异步信号（ROS -> gz_bridge -> Gazebo UserCommands），
+        # 信号后必须留出生效时间再动下一轴：否则吸盘带着还没脱开的盘开始退出，
+        # 把盘往回拖几 mm（实测 L4 抓到过 y 偏 -6.9 mm，容差 4 mm）。
+        self.signal_dwell_s = declare_number(self, "signal_dwell_s", 0.20)
         # 到位判据：位置阈值来自布局文件（与真机调参同一处），速度阈值默认 10 mm/s
         self.pos_tol = declare_number(self, "pos_tol", float(self.layout.gantry.get("pos_tol", 0.003)))
         self.vel_tol = declare_number(self, "vel_tol", float(self.layout.gantry.get("vel_tol", 0.010)))
@@ -409,6 +415,7 @@ class GantryController(Node):
             _Step("move", targets={"z": self.pick_z}, speed=self.z_speed),
             _Step("dwell", seconds=self.dwell_s),
             _Step("signal", name="attach", material=self._staged),
+            _Step("dwell", seconds=self.signal_dwell_s),
             _Step("move", targets={"z": self.travel_z}, speed=self.z_speed),
             # 垂直立面货架（三行共面）不能从正上方下放——会穿过上层托盘。
             # 改成「前排定位 -> 下探到围边之上 -> 平推进格 -> 落座 -> 退出 -> 抬升」：
@@ -420,6 +427,7 @@ class GantryController(Node):
             _Step("move", targets={"z": place_z + 0.003}, speed=self.z_speed),
             _Step("dwell", seconds=self.dwell_s),
             _Step("signal", name="detach", material=self._staged),
+            _Step("dwell", seconds=self.signal_dwell_s),
             _Step("move", targets={"y": cy - self.approach_dy}, speed=self.xy_speed),
             _Step("move", targets={"z": self.travel_z}, speed=self.z_speed),
             _Step("event", name="handled", slot=slot),
@@ -660,8 +668,13 @@ class GantryController(Node):
         msg.data = float(self.pos[axis])
         self.pub[axis].publish(msg)
 
-    def _set_pose(self, model, x, y, z):
+    def _set_pose(self, model, x, y, z, yaw=None):
         """用 ign service 把模型传送到指定位姿（上料 / 回收）。
+
+        yaw=None 时**随机给一个朝向**：圆盘是旋转对称的，但盘面缺陷不是 ——
+        固定朝向会让相机每轮都看到同一个方位的缺陷（用户实测指出）。
+        判据全部旋转不变（elong 用最小外接矩、fill/circ/rad 与朝向无关），
+        所以随机朝向不需要重标任何阈值。
 
         为什么不用动态 create 实体：见 sim_layout.yaml infeed 段的注释 ——
         DetachableJoint 在世界加载时解析 child_model，后创建的实体绑不上。
@@ -680,8 +693,12 @@ class GantryController(Node):
         必须用 subprocess 继承本进程环境（含 IGN_PARTITION），否则并行
         隔离时会把命令发到别的分区去。
         """
+        if yaw is None:
+            yaw = random.uniform(0.0, 2.0 * math.pi)
         req = ('name: "{m}" position: {{x: {x:.4f} y: {y:.4f} z: {z:.4f}}} '
-               'orientation: {{w: 1.0}}').format(m=model, x=x, y=y, z=z)
+               'orientation: {{x: 0 y: 0 z: {sz:.6f} w: {cw:.6f}}}').format(
+            m=model, x=x, y=y, z=z,
+            sz=math.sin(yaw / 2.0), cw=math.cos(yaw / 2.0))
         try:
             r = subprocess.run(
                 ["ign", "service", "-s", "/world/aic_warehouse/set_pose",
