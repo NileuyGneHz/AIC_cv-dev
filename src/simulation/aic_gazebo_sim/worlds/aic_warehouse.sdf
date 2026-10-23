@@ -585,6 +585,28 @@
       </link>
     </model>
 
+    <!-- 装饰性相机立柱（货架右前侧；不参与成像） -->
+    <model name="camera_post">
+      <static>true</static>
+      <link name="post">
+        <visual name="foot">
+          <pose>0.6400 0.2000 0.035 0 0 0</pose>
+          <geometry><box><size>0.10 0.10 0.03</size></box></geometry>
+          <material><ambient>0.20 0.21 0.23 1</ambient><diffuse>0.26 0.27 0.30 1</diffuse></material>
+        </visual>
+        <visual name="pole">
+          <pose>0.6400 0.2000 0.29 0 0 0</pose>
+          <geometry><box><size>0.035 0.035 0.54</size></box></geometry>
+          <material><ambient>0.28 0.30 0.33 1</ambient><diffuse>0.34 0.36 0.39 1</diffuse></material>
+        </visual>
+        <visual name="head">
+          <pose>0.6400 0.2000 0.575 0 0.7854 -2.25</pose>
+          <geometry><box><size>0.09 0.06 0.06</size></box></geometry>
+          <material><ambient>0.12 0.12 0.14 1</ambient><diffuse>0.16 0.16 0.18 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
     <!-- 自由摄像机：全景默认机位，看板可经 set_pose 服务自由移动 -->
     <model name="scene_cam">
       <static>true</static>

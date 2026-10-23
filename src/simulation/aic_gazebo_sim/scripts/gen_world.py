@@ -693,13 +693,50 @@ def gantry_model(layout, types, slots):
     return "\n".join("  " + ln if ln.strip() else ln for ln in block.splitlines()) + "\n\n"
 
 
+def camera_post_model(layout):
+    """货架右前侧的**装饰性**相机立柱（对齐官方平台图，不参与成像）。
+
+    真正的成像相机是 ee_cam（固定在置物台正上方，俯视标定用它）——
+    这根立柱只补齐官方平台的外观元素，避免按图对照时觉得"少了一个相机"。
+    位置在货架右前角外侧（x=0.64），横梁行程只到 x≈0.48，不干涉。
+    """
+    x, y = 0.64, 0.20
+    out = [
+        '    <!-- 装饰性相机立柱（货架右前侧；不参与成像） -->\n',
+        '    <model name="camera_post">\n',
+        "      <static>true</static>\n",
+        '      <link name="post">\n',
+        '        <visual name="foot">\n'
+        "          <pose>{x:.4f} {y:.4f} 0.035 0 0 0</pose>\n"
+        "          <geometry><box><size>0.10 0.10 0.03</size></box></geometry>\n"
+        "          <material><ambient>0.20 0.21 0.23 1</ambient>"
+        "<diffuse>0.26 0.27 0.30 1</diffuse></material>\n"
+        "        </visual>\n"
+        '        <visual name="pole">\n'
+        "          <pose>{x:.4f} {y:.4f} 0.29 0 0 0</pose>\n"
+        "          <geometry><box><size>0.035 0.035 0.54</size></box></geometry>\n"
+        "          <material><ambient>0.28 0.30 0.33 1</ambient>"
+        "<diffuse>0.34 0.36 0.39 1</diffuse></material>\n"
+        "        </visual>\n"
+        '        <visual name="head">\n'
+        "          <pose>{x:.4f} {y:.4f} 0.575 0 0.7854 -2.25</pose>\n"
+        "          <geometry><box><size>0.09 0.06 0.06</size></box></geometry>\n"
+        "          <material><ambient>0.12 0.12 0.14 1</ambient>"
+        "<diffuse>0.16 0.16 0.18 1</diffuse></material>\n"
+        "        </visual>\n"
+        "      </link>\n    </model>\n\n".format(x=x, y=y),
+    ]
+    return "".join(out)
+
+
 def build_sdf(layout, seed=None):
     slots = slot_centers(layout)
     types = material_types(layout, len(slots))
 
     out = [HEADER, base_plate_model(layout), rack_shelf_model(layout),
            staging_table_model(layout), material_park_model(layout),
-           recycle_marker(layout), ee_cam_model(layout), scene_cam(layout)]
+           recycle_marker(layout), ee_cam_model(layout),
+           camera_post_model(layout), scene_cam(layout)]
     out.append("    <!-- ===== 12 块圆形物料（开局铺在来料架 3x4 格位上，运行时逐块上料；"
                "类型 = materials.types[序号-1]）===== -->\n")
     for s, t in zip(slots, types):
