@@ -393,7 +393,9 @@ def build_page():
   .panel { background:#1e293b; border-radius:12px; overflow:hidden; min-width:0; }
   .cell { display:flex; flex-direction:column; min-height:0; }
   .cell .cap { font-size:12px; color:#94a3b8; padding:6px 10px 4px; flex:0 0 auto; }
-  .cell img { width:100%; height:0; object-fit:contain; background:#0b1220; flex:1 1 auto; min-height:0; }
+  .imgbox { flex:1 1 auto; min-height:0; display:flex; align-items:center; justify-content:center;
+            background:#0b1220; padding:0 4px 4px; }
+  .imgbox img { max-width:100%; max-height:100%; object-fit:contain; }
   .cell svg { flex:1 1 auto; min-height:0; display:block; }
   .vwrap { position:relative; background:#000; }
   .vwrap > img { width:100%; height:100%; object-fit:contain; }
@@ -487,7 +489,7 @@ def build_page():
     <div class="strip">
       <div class="panel cell">
         <div class="cap">库位监视 · 4 列 × 3 层（边框：灰 空 / 琥珀 放入中 / 绿 已放）</div>
-        <img src="/rack.mjpg" alt="rack wall">
+        <div class="imgbox"><img src="/rack.mjpg" alt="rack wall"></div>
       </div>
       <div class="panel cell">
         <div class="cap">放料位结果 · 12 个位点</div>
