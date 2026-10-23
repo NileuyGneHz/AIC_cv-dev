@@ -43,7 +43,8 @@ def parse_pose(path):
     out = {}
     for m in NAME_BLOCK.finditer(txt):
         name = m.group(1)
-        if not name.startswith("material_"):
+        # 只认 material_NN；material_park 是停料托板（静止模型），不是物料
+        if not MATERIAL_NAME.match(name):
             continue
         pos = POS_BLOCK.search(txt, m.end(), m.end() + 1200)
         if not pos:
@@ -166,7 +167,7 @@ def main():
         tid = expect_types[sid - 1]
         # 由盘心 z 反推层位（盘心 = 托盘面 + 厚/2），再取该层的阶梯 y
         level = max(1, min(rack_rows, int(round((z - thick / 2.0 - top_z) / lpz)) + 1))
-        exp_y = y_front - (level - 1) * step_y
+        exp_y = y_front - (rack_rows - level) * step_y
         dx = (x - xs[tid - 1]) * 1000.0
         dy = (y - exp_y) * 1000.0
         print("%-22s %8.4f %8.4f %8.4f %8.1f %8.1f  (L%d)"

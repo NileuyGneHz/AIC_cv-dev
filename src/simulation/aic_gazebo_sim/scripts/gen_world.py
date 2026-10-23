@@ -152,25 +152,22 @@ def slot_centers(layout):
                 "level": level,
                 "col": col,
                 "x": (col - (cols + 1) / 2.0) * px,
-                "y": y_front - (level - 1) * step_y,
+                "y": y_front - (rows - level) * step_y,
                 "z": top_z + (level - 1) * lpz,
             })
     return out
 
 
-def infeed_slot(layout, idx):
-    """来料架第 idx 块（1 起）的格位 (x, y, 托盘面 z)。
+def park_slot(layout, idx):
+    """停料区第 idx 块（1 起）的位置 (x, y, 托板面 z)。
 
-    row-major：第 1 行 4 块（1..4），第 2 行（5..8），第 3 行（9..12）。
-    物料编号与格位一一对应，types[idx-1] 就是这一格的缺陷类型。
+    12 块沿 +X 排成一行，藏在**底板下方**（俯视与相机都看不见）。
+    等价于官方平台的「生成物料」：运行时由 gantry_controller 用 set_pose
+    把第 k 块送到置物台，对观察者来说就是"凭空出现一块料"。
     """
-    inf = layout["infeed"]
-    cols = int(inf["cols"])
-    row, col = divmod(int(idx) - 1, cols)
-    px, py = float(inf["pitch_x"]), float(inf["pitch_y"])
-    x = (col + 1 - (cols + 1) / 2.0) * px
-    y = float(inf["y0"]) + row * py
-    return x, y, float(inf["z"])
+    p = layout["park"]
+    x = float(p.get("x0", -0.495)) + (int(idx) - 1) * float(p.get("pitch_x", 0.09))
+    return x, float(p.get("y", 0.0)), float(p.get("z", -0.10))
 
 
 def material_types(layout, count):
@@ -362,59 +359,40 @@ def staging_table_model(layout):
     return "".join(out)
 
 
-def infeed_shelf_model(layout):
-    """来料架：3 行 x 4 列平面料位，12 块物料开局铺在这里（类型乱序）。
+def material_park_model(layout):
+    """停料托板：藏在底板下方的托板，12 块物料开局停在这里（俯视不可见）。
 
-    每格是一个实心托盘（有 collision，物料落在它上面）+ 一圈深色围边，
-    俯视时能清楚数出 12 个格口。位置在 -Y 侧、龙门行程之外（龙门用 set_pose
-    取料，不需要走过去），所以不会与运动轨迹干涉。
+    官方平台是「点『生成物料』在置物台生成一块」。我们没有运行时 create
+    （DetachableJoint 在世界加载时就解析 child_model，动态实体绑不上），
+    所以 12 块物料仍在 SDF 里，只是停在底板下面，运行时用 set_pose 逐块送到
+    置物台 —— 对观察者等价于"凭空生成"。
     """
-    inf = layout["infeed"]
-    cols, rows = int(inf["cols"]), int(inf["rows"])
-    z = float(inf["z"])
-    tile = float(inf["tile"])
-    rim_h = float(inf["rim_height"])
-    pedestal_h = z - 0.02          # 从底板上表面（z=0.02）长到托盘面
-
+    p = layout["park"]
+    z = float(p.get("z", -0.10))
+    n = len(layout["materials"]["types"])
+    x0 = float(p.get("x0", -0.495))
+    pitch = float(p.get("pitch_x", 0.09))
+    width = (n - 1) * pitch + 0.16
+    cx = x0 + (n - 1) * pitch / 2.0
+    cy = float(p.get("y", 0.0))
     out = [
-        '    <!-- 来料架：{} 行 x {} 列，12 块物料开局铺在这里 -->\n'.format(rows, cols),
-        '    <model name="infeed_rack">\n',
+        '    <!-- 停料托板（底板下方，俯视与相机都看不见） -->\n',
+        '    <model name="material_park">\n',
         "      <static>true</static>\n",
-        '      <link name="frame">\n',
+        '      <link name="board">\n',
+        '        <visual name="board_v">\n'
+        "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
+        "          <geometry><box><size>{w:.4f} 0.16 0.02</size></box></geometry>\n"
+        "          <material><ambient>0.20 0.22 0.25 1</ambient>"
+        "<diffuse>0.24 0.26 0.29 1</diffuse></material>\n"
+        "        </visual>\n"
+        '        <collision name="board_col">\n'
+        "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
+        "          <geometry><box><size>{w:.4f} 0.16 0.02</size></box></geometry>\n"
+        "        </collision>\n"
+        "      </link>\n    </model>\n\n".format(
+            x=cx, y=cy, z=z - 0.01, w=width),
     ]
-    for idx in range(1, cols * rows + 1):
-        x, y, _z = infeed_slot(layout, idx)
-        out.append(
-            '        <visual name="tile_{i:02d}">\n'
-            "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
-            "          <geometry><box><size>{t} {t} {h}</size></box></geometry>\n"
-            "          <material><ambient>0.46 0.48 0.50 1</ambient>"
-            "<diffuse>0.56 0.58 0.60 1</diffuse></material>\n"
-            "        </visual>\n".format(
-                i=idx, x=x, y=y, z=0.02 + pedestal_h / 2.0, t=tile, h=pedestal_h))
-        out.append(
-            '        <collision name="tile_col_{i:02d}">\n'
-            "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
-            "          <geometry><box><size>{t} {t} {h}</size></box></geometry>\n"
-            "        </collision>\n".format(
-                i=idx, x=x, y=y, z=0.02 + pedestal_h / 2.0, t=tile, h=pedestal_h))
-        # 四面围边（深色，俯视时勾出格口）
-        half = tile / 2.0 - 0.006
-        for nm, dx, dy, sx, sy in (
-                ("n", 0.0, +half, tile, 0.012),
-                ("s", 0.0, -half, tile, 0.012),
-                ("e", +half, 0.0, 0.012, tile),
-                ("w", -half, 0.0, 0.012, tile)):
-            out.append(
-                '        <visual name="rim_{i:02d}_{n}">\n'
-                "          <pose>{x:.4f} {y:.4f} {z:.4f} 0 0 0</pose>\n"
-                "          <geometry><box><size>{sx} {sy} {h}</size></box></geometry>\n"
-                "          <material><ambient>0.16 0.17 0.19 1</ambient>"
-                "<diffuse>0.20 0.21 0.23 1</diffuse></material>\n"
-                "        </visual>\n".format(
-                    i=idx, n=nm, x=x + dx, y=y + dy, z=z + rim_h / 2.0,
-                    sx=sx, sy=sy, h=rim_h))
-    out.append("      </link>\n    </model>\n\n")
     return "".join(out)
 
 
@@ -626,7 +604,7 @@ def plate_model(layout, slot, mtype, jitter_seed=None):
     r = float(plate["diameter"]) / 2.0
     th = float(plate["thickness"])
     idx = int(slot["id"])
-    cx, cy, deck_z = infeed_slot(layout, idx)
+    cx, cy, deck_z = park_slot(layout, idx)
     cz = deck_z + th / 2.0 + 0.001   # 托盘面上留 1 mm，重力自然落稳
     name = "material_{:02d}".format(idx)
     d = th / 2.0  # 盘顶面在 link 内的 z
@@ -720,7 +698,7 @@ def build_sdf(layout, seed=None):
     types = material_types(layout, len(slots))
 
     out = [HEADER, base_plate_model(layout), rack_shelf_model(layout),
-           staging_table_model(layout), infeed_shelf_model(layout),
+           staging_table_model(layout), material_park_model(layout),
            recycle_marker(layout), ee_cam_model(layout), scene_cam(layout)]
     out.append("    <!-- ===== 12 块圆形物料（开局铺在来料架 3x4 格位上，运行时逐块上料；"
                "类型 = materials.types[序号-1]）===== -->\n")

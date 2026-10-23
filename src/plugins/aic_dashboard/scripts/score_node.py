@@ -58,7 +58,7 @@ TYPE_NAMES_EN = {1: "SCRATCH", 2: "STAIN", 3: "CHIP", 4: "HOLE"}
 STATUS_LABEL = {
     "pending": "待巡视", "visiting": "识别中", "handling": "搬运中",
     "ok": "正确", "wrong": "错误", "timeout": "超时",
-    "magazine": "待上料", "staged": "识别中", "held": "搬运中",
+    "stock": "未生成", "staged": "识别中", "held": "搬运中",
     "placed": "已入位", "recycled": "已回收",
 }
 
@@ -101,7 +101,7 @@ class ScoreState:
     """判分 + 态势状态（线程安全：ROS 回调线程写，HTTP 线程读）。
 
     M3 语义：slot_id 既是决策的巡视位点号，也是物料编号（material_slot）。
-    物料流：来料架（magazine，3 行 x 4 列）→ 置物台（staged）→ 吸盘（held）
+    物料流：停料区（stock，底板下不可见）→ 置物台（staged）→ 吸盘（held）
     → 货架列位（placed）/ 回收位（recycled，识别失败未取走）。
     判分真值：types[slot-1]（与决策 CSV / gt 桩同一份事实）。
     """
@@ -119,15 +119,8 @@ class ScoreState:
         self.lpz = float(rack.get("level_pitch_z", 0.06))
         st = doc.get("staging", {})
         self.staging = (float(st.get("x", 0.30)), float(st.get("y", -0.15)))
-        # 来料架（M4）：3 行 x 4 列，12 块物料开局各占一格
-        inf = doc.get("infeed", {})
-        self.infeed_cols = int(inf.get("cols", 4))
-        self.infeed_rows = int(inf.get("rows", 3))
-        self.infeed_px = float(inf.get("pitch_x", 0.25))
-        self.infeed_py = float(inf.get("pitch_y", 0.09))
-        self.infeed_y0 = float(inf.get("y0", -0.44))
-        self.infeed_y1 = self.infeed_y0 + (self.infeed_rows - 1) * self.infeed_py
-        self.magazine = (0.0, (self.infeed_y0 + self.infeed_y1) / 2.0)
+        # 停料区（M5）：12 块物料停在底板下方，看板不画；上料后才出现在置物台
+        self.magazine = (0.0, self.staging[1])
         rc = doc.get("recycle", {})
         self.recycle = (float(rc.get("x", -0.10)), float(rc.get("y", -0.15)))
         # 吸盘工具基准（z_joint=0 的吸口下沿高度）与盘厚：用于从 gantry z 反推层位
@@ -151,15 +144,8 @@ class ScoreState:
         self.gantry = {"x": 0.0, "y": 0.0, "z": 0.0, "moving": False}
         self.plates = {}                          # slot -> dict(type,status,x,y)
         for s in range(1, len(types) + 1):
-            ix, iy = self.infeed_slot(s)
-            self.plates[s] = {"type": int(types[s - 1]), "status": "magazine",
-                              "x": ix, "y": iy}
-
-    def infeed_slot(self, idx):
-        """来料架第 idx 块（1 起）的格位 (x, y)，row-major（与生成器同一公式）。"""
-        row, col = divmod(int(idx) - 1, self.infeed_cols)
-        x = (col + 1 - (self.infeed_cols + 1) / 2.0) * self.infeed_px
-        return x, self.infeed_y0 + row * self.infeed_py
+            self.plates[s] = {"type": int(types[s - 1]), "status": "stock",
+                              "x": 0.0, "y": 0.0}
 
     def col_x(self, mtype):
         """类型列的格心 x（列序即类型号 1..cols）。"""
@@ -193,7 +179,7 @@ class ScoreState:
                         pl["x"], pl["y"] = self.recycle
                 # 上料：material_slot -> 置物台
                 pl = self.plates.get(slot)
-                if pl is not None and pl["status"] in ("magazine", "recycled"):
+                if pl is not None and pl["status"] in ("stock", "recycled"):
                     pl["status"] = "staged"
                     pl["x"], pl["y"] = self.staging
                 if self.slots[slot]["status"] == "pending":
@@ -282,7 +268,8 @@ class ScoreState:
                 pl["status"] = "placed"
                 level = self.level_of_z(self.gantry["z"])
                 pl["x"] = self.col_x(t)
-                pl["y"] = self.rack_y_front - (level - 1) * self.step_y
+                # 第 1 层（最低）在最靠 -Y 的一侧，往上逐层后退（与货架 V 形一致）
+                pl["y"] = self.rack_y_front - (self.rows - level) * self.step_y
                 pl["level"] = level
                 self.events.append((time.strftime("%H:%M:%S"),
                                     "物料 %02d 放入货架（%s 列 · 第 %d 层）" % (
@@ -319,8 +306,7 @@ class ScoreState:
             # 物料也要一起归位：不重置的话第二轮起 plates 还停在上一轮的
             # placed/recycled，态势图会把「已放进货架」画成仍占着来料架格位。
             for idx, pl in self.plates.items():
-                ix, iy = self.infeed_slot(idx)
-                pl.update(status="magazine", x=ix, y=iy)
+                pl.update(status="stock", x=0.0, y=0.0)
             self.events.append((time.strftime("%H:%M:%S"), "已重置，等待新一轮巡视"))
             self.cur_visit, self.cur_slot = 0, None
             self.last_vision = None
@@ -367,11 +353,6 @@ class ScoreState:
                         "step_y": self.step_y, "lpz": self.lpz,
                         "staging": list(self.staging),
                         "magazine": list(self.magazine),
-                        "infeed": {
-                            "x0": -(self.infeed_cols - 1) / 2.0 * self.infeed_px - 0.06,
-                            "x1": (self.infeed_cols - 1) / 2.0 * self.infeed_px + 0.06,
-                            "y0": self.infeed_y0 - 0.06,
-                            "y1": self.infeed_y1 + 0.06},
                         "recycle": list(self.recycle)},
             }
 
@@ -481,9 +462,9 @@ function drawMap(d) {
   const X = x => (x + ox) * S, Y = y => (y + oy) * S;
   const m = d.map;
   let s = `<rect width="100%" height="100%" fill="#0b1220"/>`;
-  // 放置货架：4 类型列 x 3 层（层位沿 +Y 阶梯错开，与 sim_layout.rack 一致）
+  // 放置货架：4 类型列 x 3 层（第 1 层最靠 -Y，往上后退，与 sim_layout.rack 一致）
   for (let lv = 0; lv < m.rows; lv++) {
-    const ry = m.rack_y - lv * m.step_y;
+    const ry = m.rack_y - (m.rows - 1 - lv) * m.step_y;
     m.col_xs.forEach((zx, i) => {
       s += `<rect x="${X(zx)-19}" y="${Y(ry)-19}" width="38" height="38"
         fill="#1e293b" stroke="#475569" rx="4"/>`;
@@ -502,19 +483,15 @@ function drawMap(d) {
     fill="#132a1e" stroke="#22c55e" rx="4" stroke-dasharray="4 3"/>
     <text x="${X(m.staging[0])}" y="${Y(m.staging[1])+30}" fill="#22c55e" font-size="10"
     text-anchor="middle">置物台</text>`;
-  s += `<rect x="${X(m.infeed.x0)}" y="${Y(m.infeed.y0)}"
-    width="${X(m.infeed.x1)-X(m.infeed.x0)}" height="${Y(m.infeed.y1)-Y(m.infeed.y0)}"
-    fill="#111c2e" stroke="#64748b" rx="4" stroke-dasharray="4 3"/>
-    <text x="${X(0)}" y="${Y(m.infeed.y1)+16}" fill="#64748b" font-size="10"
-    text-anchor="middle">来料架 3 x 4</text>`;
   s += `<circle cx="${X(m.recycle[0])}" cy="${Y(m.recycle[1])}" r="14" fill="none"
     stroke="#a16207" stroke-dasharray="3 3"/>
     <text x="${X(m.recycle[0])}" y="${Y(m.recycle[1])+28}" fill="#a16207" font-size="10"
     text-anchor="middle">回收位</text>`;
   // 物料圆点（待命=来料架，识别中=置物台，搬运=跟随龙门，已入位=货架列）
   for (const p of d.plates) {
+    if (p.status === 'stock') continue;      // 未生成：不画（底板下方停料）
     const pulse = p.status === 'held' ? ` stroke="#fbbf24" stroke-width="3"` : "";
-    const dim = p.status === 'magazine' ? ` opacity="0.45"` : "";
+    const dim = "";
     s += `<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="13" fill="${TC[p.type]}"${pulse}${dim}/>
       <text x="${X(p.x)}" y="${Y(p.y)+4}" fill="#0b1220" font-size="11" font-weight="bold"
       text-anchor="middle">${p.id}</text>`;

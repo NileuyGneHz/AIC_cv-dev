@@ -117,6 +117,11 @@ class GantryController(Node):
         self.plate_th = float(self.layout.plate["thickness"])
         # 「贴住盘顶」的关节值 = 盘顶高度 - pad_z0
         self.pick_z = float(self.layout.staging["z"]) + self.plate_th - self.pad_z0
+        # 垂直立面货架（level_step_y = 0）的放置参数：
+        #   approach_dy：格口前方的定位点，需 > 盘半径 + 格口半深；
+        #   place_lift：平推进格前的抬升量，需 > 格口围边高（否则推不进去）
+        self.approach_dy = declare_number(self, "approach_dy", 0.12)
+        self.place_lift = declare_number(self, "place_lift", 0.028)
         # 到位判据：位置阈值来自布局文件（与真机调参同一处），速度阈值默认 10 mm/s
         self.pos_tol = declare_number(self, "pos_tol", float(self.layout.gantry.get("pos_tol", 0.003)))
         self.vel_tol = declare_number(self, "vel_tol", float(self.layout.gantry.get("vel_tol", 0.010)))
@@ -387,12 +392,17 @@ class GantryController(Node):
             _Step("dwell", seconds=self.dwell_s),
             _Step("signal", name="attach", material=self._staged),
             _Step("move", targets={"z": self.travel_z}, speed=self.z_speed),
-            _Step("move", targets={"x": cx, "y": cy}, speed=self.xy_speed),
-            # 放置用 place 步（触底判据）：托盘面接触后位置控制器还在压，
-            # 按精确到位判会白等到 move_timeout_s（M2 实测过的坑）
-            _Step("place", targets={"z": place_z}, speed=self.z_speed),
+            # 垂直立面货架（三行共面）不能从正上方下放——会穿过上层托盘。
+            # 改成「前排定位 -> 下探到围边之上 -> 平推进格 -> 落座 -> 退出 -> 抬升」：
+            #   approach_dy = 0.12 > 盘半径 0.04 + 格口半深 0.06 + 余量
+            _Step("move", targets={"x": cx, "y": cy - self.approach_dy},
+                   speed=self.xy_speed),
+            _Step("move", targets={"z": place_z + self.place_lift}, speed=self.z_speed),
+            _Step("move", targets={"y": cy}, speed=self.xy_speed),
+            _Step("move", targets={"z": place_z + 0.003}, speed=self.z_speed),
             _Step("dwell", seconds=self.dwell_s),
             _Step("signal", name="detach", material=self._staged),
+            _Step("move", targets={"y": cy - self.approach_dy}, speed=self.xy_speed),
             _Step("move", targets={"z": self.travel_z}, speed=self.z_speed),
             _Step("event", name="handled", slot=slot),
         ]

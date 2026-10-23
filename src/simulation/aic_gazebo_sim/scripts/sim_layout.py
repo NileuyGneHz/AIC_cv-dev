@@ -30,7 +30,7 @@ class SimLayout:
         self.plate = doc["plate"]
         self.gantry = doc.get("gantry", {})
         self.staging = doc.get("staging", {})
-        self.infeed = doc.get("infeed", {})
+        self.park = doc.get("park", {})
         self.recycle = doc.get("recycle", {})
         self.types = [int(t) for t in doc.get("materials", {}).get("types", [])]
 
@@ -52,18 +52,15 @@ class SimLayout:
         return (float(self.staging["x"]), float(self.staging["y"]),
                 float(self.staging["z"]))
 
-    def infeed_slot(self, idx):
-        """来料架第 idx 块（1 起）的格位 (x, y, 托盘面 z)；row-major。
+    def park_slot(self, idx):
+        """停料区第 idx 块（1 起）的位置 (x, y, 托板面 z)。
 
-        与 gen_world.infeed_slot 同一公式（世界生成与运行时取料必须一致）。
+        12 块沿 +X 排成一行，藏在底板下方（俯视不可见）。
+        与 gen_world.park_slot 同一公式（世界生成与运行时上料必须一致）。
         """
-        cols = int(self.infeed.get("cols", 4))
-        row, col = divmod(int(idx) - 1, cols)
-        px = float(self.infeed.get("pitch_x", 0.25))
-        py = float(self.infeed.get("pitch_y", 0.09))
-        x = (col + 1 - (cols + 1) / 2.0) * px
-        y = float(self.infeed.get("y0", -0.44)) + row * py
-        return x, y, float(self.infeed.get("z", 0.10))
+        p = self.park
+        x = float(p.get("x0", -0.495)) + (int(idx) - 1) * float(p.get("pitch_x", 0.09))
+        return x, float(p.get("y", 0.0)), float(p.get("z", -0.10))
 
     def recycle_xyz(self):
         """回收位 (x, y, z)。"""
@@ -73,8 +70,11 @@ class SimLayout:
     def rack_cell(self, mtype, level):
         """类型列 mtype 1..4 的第 level 层（1 起）格心 (x, y) 与托盘面高 z。
 
-        层位沿 +Y 阶梯错开：y = y_front - (level-1)*level_step_y，
-        保证从上方垂放时不会撞到上层的托盘。
+        层位沿 +Y 阶梯错开：y = y_front - (rows-level)*level_step_y。
+        即**第 1 层（最低）在最靠 -Y 的一侧（贴近置物台/来料架），往上逐层后退**，
+        与来料架一起构成 V 形（两侧低端朝中间）。
+        `y_front` 仍是「最远一层」的深度线，货架外框/背板不随层位反向移动。
+        阶梯错位保证从上方垂放时不会撞到上层的托盘。
         """
         col = int(mtype)
         if not 1 <= col <= self.cols:
@@ -85,7 +85,7 @@ class SimLayout:
         z = float(self.rack["top_z"]) + (int(level) - 1) * float(
             self.rack["level_pitch_z"])
         y = (float(self.rack.get("y_front", self.rack.get("y", 0.30)))
-             - (int(level) - 1) * float(self.rack.get("level_step_y", 0.0)))
+             - (self.rows - int(level)) * float(self.rack.get("level_step_y", 0.0)))
         return x, y, z
 
     def type_of_material(self, idx):
