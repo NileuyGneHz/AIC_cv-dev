@@ -777,6 +777,211 @@
       </link>
     </model>
 
+    <!-- 放料完成指示环（无碰撞；放料后 set_pose 到盘位，包住圆柱侧边） -->
+    <model name="marker_01">
+      <static>false</static>
+      <pose>-0.4950 0.16 -0.14 0 0 0</pose>
+      <link name="ring">
+        <gravity>false</gravity>
+        <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
+        <visual name="ring">
+          <geometry><cylinder><radius>0.0415</radius><length>0.0060</length></cylinder></geometry>
+          <material>
+            <ambient>0.04 0.42 0.12 1</ambient>
+            <diffuse>0.06 0.70 0.20 1</diffuse>
+            <emissive>0.02 0.16 0.05 1</emissive>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="marker_02">
+      <static>false</static>
+      <pose>-0.4050 0.16 -0.14 0 0 0</pose>
+      <link name="ring">
+        <gravity>false</gravity>
+        <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
+        <visual name="ring">
+          <geometry><cylinder><radius>0.0415</radius><length>0.0060</length></cylinder></geometry>
+          <material>
+            <ambient>0.04 0.42 0.12 1</ambient>
+            <diffuse>0.06 0.70 0.20 1</diffuse>
+            <emissive>0.02 0.16 0.05 1</emissive>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="marker_03">
+      <static>false</static>
+      <pose>-0.3150 0.16 -0.14 0 0 0</pose>
+      <link name="ring">
+        <gravity>false</gravity>
+        <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
+        <visual name="ring">
+          <geometry><cylinder><radius>0.0415</radius><length>0.0060</length></cylinder></geometry>
+          <material>
+            <ambient>0.04 0.42 0.12 1</ambient>
+            <diffuse>0.06 0.70 0.20 1</diffuse>
+            <emissive>0.02 0.16 0.05 1</emissive>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="marker_04">
+      <static>false</static>
+      <pose>-0.2250 0.16 -0.14 0 0 0</pose>
+      <link name="ring">
+        <gravity>false</gravity>
+        <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
+        <visual name="ring">
+          <geometry><cylinder><radius>0.0415</radius><length>0.0060</length></cylinder></geometry>
+          <material>
+            <ambient>0.04 0.42 0.12 1</ambient>
+            <diffuse>0.06 0.70 0.20 1</diffuse>
+            <emissive>0.02 0.16 0.05 1</emissive>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="marker_05">
+      <static>false</static>
+      <pose>-0.1350 0.16 -0.14 0 0 0</pose>
+      <link name="ring">
+        <gravity>false</gravity>
+        <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
+        <visual name="ring">
+          <geometry><cylinder><radius>0.0415</radius><length>0.0060</length></cylinder></geometry>
+          <material>
+            <ambient>0.04 0.42 0.12 1</ambient>
+            <diffuse>0.06 0.70 0.20 1</diffuse>
+            <emissive>0.02 0.16 0.05 1</emissive>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="marker_06">
+      <static>false</static>
+      <pose>-0.0450 0.16 -0.14 0 0 0</pose>
+      <link name="ring">
+        <gravity>false</gravity>
+        <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
+        <visual name="ring">
+          <geometry><cylinder><radius>0.0415</radius><length>0.0060</length></cylinder></geometry>
+          <material>
+            <ambient>0.04 0.42 0.12 1</ambient>
+            <diffuse>0.06 0.70 0.20 1</diffuse>
+            <emissive>0.02 0.16 0.05 1</emissive>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="marker_07">
+      <static>false</static>
+      <pose>0.0450 0.16 -0.14 0 0 0</pose>
+      <link name="ring">
+        <gravity>false</gravity>
+        <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
+        <visual name="ring">
+          <geometry><cylinder><radius>0.0415</radius><length>0.0060</length></cylinder></geometry>
+          <material>
+            <ambient>0.04 0.42 0.12 1</ambient>
+            <diffuse>0.06 0.70 0.20 1</diffuse>
+            <emissive>0.02 0.16 0.05 1</emissive>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="marker_08">
+      <static>false</static>
+      <pose>0.1350 0.16 -0.14 0 0 0</pose>
+      <link name="ring">
+        <gravity>false</gravity>
+        <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
+        <visual name="ring">
+          <geometry><cylinder><radius>0.0415</radius><length>0.0060</length></cylinder></geometry>
+          <material>
+            <ambient>0.04 0.42 0.12 1</ambient>
+            <diffuse>0.06 0.70 0.20 1</diffuse>
+            <emissive>0.02 0.16 0.05 1</emissive>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="marker_09">
+      <static>false</static>
+      <pose>0.2250 0.16 -0.14 0 0 0</pose>
+      <link name="ring">
+        <gravity>false</gravity>
+        <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
+        <visual name="ring">
+          <geometry><cylinder><radius>0.0415</radius><length>0.0060</length></cylinder></geometry>
+          <material>
+            <ambient>0.04 0.42 0.12 1</ambient>
+            <diffuse>0.06 0.70 0.20 1</diffuse>
+            <emissive>0.02 0.16 0.05 1</emissive>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="marker_10">
+      <static>false</static>
+      <pose>0.3150 0.16 -0.14 0 0 0</pose>
+      <link name="ring">
+        <gravity>false</gravity>
+        <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
+        <visual name="ring">
+          <geometry><cylinder><radius>0.0415</radius><length>0.0060</length></cylinder></geometry>
+          <material>
+            <ambient>0.04 0.42 0.12 1</ambient>
+            <diffuse>0.06 0.70 0.20 1</diffuse>
+            <emissive>0.02 0.16 0.05 1</emissive>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="marker_11">
+      <static>false</static>
+      <pose>0.4050 0.16 -0.14 0 0 0</pose>
+      <link name="ring">
+        <gravity>false</gravity>
+        <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
+        <visual name="ring">
+          <geometry><cylinder><radius>0.0415</radius><length>0.0060</length></cylinder></geometry>
+          <material>
+            <ambient>0.04 0.42 0.12 1</ambient>
+            <diffuse>0.06 0.70 0.20 1</diffuse>
+            <emissive>0.02 0.16 0.05 1</emissive>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="marker_12">
+      <static>false</static>
+      <pose>0.4950 0.16 -0.14 0 0 0</pose>
+      <link name="ring">
+        <gravity>false</gravity>
+        <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
+        <visual name="ring">
+          <geometry><cylinder><radius>0.0415</radius><length>0.0060</length></cylinder></geometry>
+          <material>
+            <ambient>0.04 0.42 0.12 1</ambient>
+            <diffuse>0.06 0.70 0.20 1</diffuse>
+            <emissive>0.02 0.16 0.05 1</emissive>
+          </material>
+        </visual>
+      </link>
+    </model>
+
     <!-- 自由摄像机：全景默认机位，看板可经 set_pose 服务自由移动 -->
     <model name="scene_cam">
       <static>true</static>

@@ -791,6 +791,50 @@ def rack_cam_model(layout):
     return "".join(out)
 
 
+def marker_model(layout):
+    """放料完成指示环：**无碰撞**的绿色薄环，放料后 set_pose 到该盘位置。
+
+    Fortress 没有「运行时改材质」的服务，所以不能直接把盘侧边的材质刷成绿色。
+    这里用一个**比盘只大 1.5 mm**、与盘等高的绿色薄套贴在盘周侧：
+    侧视整圈变绿，俯视只露出一圈细绿边（2026-10-25 用户反馈 7 mm 太厚）。
+
+    三条硬约束：
+    1. **没有 collision**：不参与物理，不会顶住盘或货架，也不影响落位判定；
+    2. **gravity=false**：停在底板下方（z=-0.14）不会掉；
+    3. 顶面比盘顶低 0.5 mm：不盖住盘面，两个视觉相机看到的缺陷特征不变。
+    """
+    plate = layout["plate"]
+    r = float(plate["diameter"]) / 2.0
+    th = float(plate["thickness"])
+    R = r + 0.0015
+    p = layout["park"]
+    n = len(layout["materials"]["types"])
+    x0 = float(p.get("x0", -0.495))
+    pitch = float(p.get("pitch_x", 0.09))
+    out = ['    <!-- 放料完成指示环（无碰撞；放料后 set_pose 到盘位，包住圆柱侧边） -->\n']
+    for i in range(1, n + 1):
+        out.append(
+            '    <model name="marker_{i:02d}">\n'
+            "      <static>false</static>\n"
+            "      <pose>{x:.4f} 0.16 -0.14 0 0 0</pose>\n"
+            '      <link name="ring">\n'
+            "        <gravity>false</gravity>\n"
+            "        <inertial><mass>0.005</mass><inertia>"
+            "<ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>\n"
+            '        <visual name="ring">\n'
+            "          <geometry><cylinder><radius>{r:.4f}</radius>"
+            "<length>{h:.4f}</length></cylinder></geometry>\n"
+            "          <material>\n"
+            "            <ambient>0.04 0.42 0.12 1</ambient>\n"
+            "            <diffuse>0.06 0.70 0.20 1</diffuse>\n"
+            "            <emissive>0.02 0.16 0.05 1</emissive>\n"
+            "          </material>\n"
+            "        </visual>\n"
+            "      </link>\n    </model>\n\n".format(
+                i=i, x=x0 + (i - 1) * pitch, r=R, h=th))
+    return "".join(out)
+
+
 def build_sdf(layout, seed=None):
     slots = slot_centers(layout)
     types = material_types(layout, len(slots))
@@ -798,7 +842,8 @@ def build_sdf(layout, seed=None):
     out = [HEADER, base_plate_model(layout), rack_shelf_model(layout),
            staging_table_model(layout), material_park_model(layout),
            recycle_marker(layout), ee_cam_model(layout),
-           camera_post_model(layout), rack_cam_model(layout), scene_cam(layout)]
+           camera_post_model(layout), rack_cam_model(layout), marker_model(layout),
+           scene_cam(layout)]
     out.append("    <!-- ===== 12 块圆形物料（开局停在底板下方的停料托板上，运行时逐块 set_pose 上料；"
                "类型 = materials.types[序号-1]）===== -->\n")
     for s, t in zip(slots, types):

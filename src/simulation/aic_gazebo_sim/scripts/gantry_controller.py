@@ -428,6 +428,11 @@ class GantryController(Node):
             _Step("dwell", seconds=self.dwell_s),
             _Step("signal", name="detach", material=self._staged),
             _Step("dwell", seconds=self.signal_dwell_s),
+            # 放料完成 -> 盘侧边变绿：把一个无碰撞的绿色薄环套到盘上（Fortress
+            # 没有运行时改材质服务，只能用「套环」实现，见 gen_world.marker_model）。
+            # 环中心比盘心低 0.5 mm：顶面不盖住盘面，俯视仍看得清缺陷。
+            _Step("signal", name="marker", material=self._staged,
+                  x=cx, y=cy, z=deck_z + self.plate_th / 2.0 - 0.0005),
             _Step("move", targets={"y": cy - self.approach_dy}, speed=self.xy_speed),
             _Step("move", targets={"z": self.travel_z}, speed=self.z_speed),
             _Step("event", name="handled", slot=slot),
@@ -731,6 +736,12 @@ class GantryController(Node):
                 self._held_slot = 0
             self.get_logger().info(
                 "[sim/control] material %02d 释放（吸盘断气 / DetachableJoint detach）" % mat)
+        elif step.name == "marker":
+            mat = int(step.material)
+            ok = self._set_pose("marker_{:02d}".format(mat),
+                                float(step.x), float(step.y), float(step.z), yaw=0.0)
+            self.get_logger().info(
+                "[sim/control] 放料标记 %02d 侧环 %s" % (mat, "已点亮" if ok else "失败"))
         elif step.name == "spawn":
             mat = int(step.material)
             sx, sy, sz = self._staging_xy
