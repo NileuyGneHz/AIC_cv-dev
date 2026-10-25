@@ -621,7 +621,9 @@ for (const a of ["x","y","z"]) {
 
 function drawMap(d) {
   const S = 320, ox = 0.58, oy = 0.42;
-  const X = x => (x + ox) * S, Y = y => (y + oy) * S;
+  // Y 要取负：SVG 的 y 向下，而世界 +Y 是「向货架」。这样态势图与左侧
+  // 全景俯视同向（货架在上、置物台在下），不会左右两个画面上下颠倒。
+  const X = x => (x + ox) * S, Y = y => (oy - y) * S;
   const m = d.map;
   let s = `<rect width="100%" height="100%" fill="#0b1220"/>`;
   for (let lv = 0; lv < m.rows; lv++) {
