@@ -50,6 +50,11 @@ materials:
   # 缺陷几何随机化：0 = 关闭（生成物与基线逐字节一致）；>0 = 按 (seed, index) 抽几何。
   jitter_seed: 0
 
+# 放料判定指示环（无碰撞、纯 visual；放对绿 / 放错红）
+marker:
+  wall_m: 0.0005       # m，环外径 = 盘半径 + wall_m（= 俯视露出的环宽 0.5 mm）
+                       # 改这里后重跑 scripts/gen_world.py 才生效
+
 gantry:
   travel_z: 0.02       # 行进高度（关节值；吸口下沿 = pad_z0 + travel_z = 0.259，
                        # 比第 3 层围边顶 0.232 高 27 mm —— 携料平移必须跨过货架最高点）

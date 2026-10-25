@@ -405,9 +405,15 @@ class GantryController(Node):
         cx, cy, deck_z = cell
         # 放置目标：吸口贴住放到托盘上的盘顶
         place_z = deck_z + self.plate_th - self.pad_z0
+        # 「放对/放错」= 视觉判出的类型（决定进哪一列）与该轮真值是否一致，
+        # 与看板判分同一份事实（sim_layout.materials.types[k-1]），不引第二套口径。
+        truth = int(self.layout.slot_type(slot))
+        judged_ok = (int(mtype) == truth)
         self.get_logger().info(
-            "[sim/control] material %02d（type=%d）-> 货架列 %d 第 %d 层 (%.3f, %.3f, %.3f)"
-            % (slot, int(mtype), mtype, level, cx, cy, deck_z))
+            "[sim/control] material %02d（判型 %d / 真值 %d：%s）-> 货架列 %d 第 %d 层"
+            " (%.3f, %.3f, %.3f)"
+            % (slot, int(mtype), truth, "放对" if judged_ok else "放错",
+               mtype, level, cx, cy, deck_z))
         steps += [
             # 从停靠偏移位平移到置物台正上方，再下探吸附
             _Step("move", targets={"x": self._staging_xy[0],
@@ -428,11 +434,13 @@ class GantryController(Node):
             _Step("dwell", seconds=self.dwell_s),
             _Step("signal", name="detach", material=self._staged),
             _Step("dwell", seconds=self.signal_dwell_s),
-            # 放料完成 -> 盘侧边变绿：把一个无碰撞的绿色薄环套到盘上（Fortress
-            # 没有运行时改材质服务，只能用「套环」实现，见 gen_world.marker_model）。
+            # 放料完成 -> 给盘套一只 0.5 mm 薄环（Fortress 没有运行时改材质服务，
+            # 只能用「套环」实现，见 gen_world.marker_model）：
+            #   放对（判型 == 真值）点亮绿环 marker_NN，放错点亮红环 marker_wrong_NN。
             # 环中心比盘心低 0.5 mm：顶面不盖住盘面，俯视仍看得清缺陷。
             _Step("signal", name="marker", material=self._staged,
-                  x=cx, y=cy, z=deck_z + self.plate_th / 2.0 - 0.0005),
+                  x=cx, y=cy, z=deck_z + self.plate_th / 2.0 - 0.0005,
+                  judged_ok=judged_ok, got=int(mtype), truth=truth),
             _Step("move", targets={"y": cy - self.approach_dy}, speed=self.xy_speed),
             _Step("move", targets={"z": self.travel_z}, speed=self.z_speed),
             _Step("event", name="handled", slot=slot),
@@ -738,10 +746,14 @@ class GantryController(Node):
                 "[sim/control] material %02d 释放（吸盘断气 / DetachableJoint detach）" % mat)
         elif step.name == "marker":
             mat = int(step.material)
-            ok = self._set_pose("marker_{:02d}".format(mat),
-                                float(step.x), float(step.y), float(step.z), yaw=0.0)
+            good = bool(step.judged_ok)
+            model = ("marker_{:02d}" if good else "marker_wrong_{:02d}").format(mat)
+            ok = self._set_pose(model, float(step.x), float(step.y),
+                                float(step.z), yaw=0.0)
             self.get_logger().info(
-                "[sim/control] 放料标记 %02d 侧环 %s" % (mat, "已点亮" if ok else "失败"))
+                "[sim/control] 放料标记 %02d %s（判型 %d / 真值 %d）%s环 %s"
+                % (mat, "放对" if good else "放错", int(step.got), int(step.truth),
+                   "绿" if good else "红", "已点亮" if ok else "失败"))
         elif step.name == "spawn":
             mat = int(step.material)
             sx, sy, sz = self._staging_xy

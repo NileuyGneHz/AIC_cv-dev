@@ -791,12 +791,24 @@ def rack_cam_model(layout):
     return "".join(out)
 
 
-def marker_model(layout):
-    """放料完成指示环：**无碰撞**的绿色薄环，放料后 set_pose 到该盘位置。
+MARKER_GREEN = ((0.04, 0.42, 0.12), (0.06, 0.70, 0.20), (0.02, 0.16, 0.05))
+MARKER_RED = ((0.42, 0.04, 0.04), (0.78, 0.08, 0.08), (0.20, 0.02, 0.02))
+# 环外径比盘半径大多少（= 俯视露出的环宽）的缺省值；sim_layout.yaml 的
+# marker.wall_m 优先（2026-10-25 用户口径：7 mm → 1.5 mm → 0.5 mm）。
+MARKER_WALL_M = 0.0005
 
-    Fortress 没有「运行时改材质」的服务，所以不能直接把盘侧边的材质刷成绿色。
-    这里用一个**比盘只大 1.5 mm**、与盘等高的绿色薄套贴在盘周侧：
-    侧视整圈变绿，俯视只露出一圈细绿边（2026-10-25 用户反馈 7 mm 太厚）。
+
+def marker_model(layout):
+    """放料判定指示环：**无碰撞**的绿/红薄套，放料后 set_pose 到该盘位置。
+
+    Fortress 没有「运行时改材质」的服务，所以不能直接把盘侧边的材质刷成颜色。
+    这里用一个**比盘只大 0.5 mm**（`sim_layout.yaml` 的 `marker.wall_m`）、
+    与盘等高的薄套贴在盘周侧：侧视整圈变色，俯视只露出一圈 0.5 mm 细边。
+
+    每种颜色各一套、编号与物料一一对应，运行时只点亮其中一只（另一只留在底板下）：
+      * `marker_NN`       绿环 —— 视觉判型 == 该轮真值（放对）
+      * `marker_wrong_NN` 红环 —— 视觉判型 != 该轮真值（放错）
+    两只**几何完全一致**，只有材质不同，所以「绿边/红边」宽度、高度、位置一致。
 
     三条硬约束：
     1. **没有 collision**：不参与物理，不会顶住盘或货架，也不影响落位判定；
@@ -806,32 +818,39 @@ def marker_model(layout):
     plate = layout["plate"]
     r = float(plate["diameter"]) / 2.0
     th = float(plate["thickness"])
-    R = r + 0.0015
+    R = r + float((layout.get("marker") or {}).get("wall_m", MARKER_WALL_M))
     p = layout["park"]
     n = len(layout["materials"]["types"])
     x0 = float(p.get("x0", -0.495))
     pitch = float(p.get("pitch_x", 0.09))
-    out = ['    <!-- 放料完成指示环（无碰撞；放料后 set_pose 到盘位，包住圆柱侧边） -->\n']
-    for i in range(1, n + 1):
-        out.append(
-            '    <model name="marker_{i:02d}">\n'
-            "      <static>false</static>\n"
-            "      <pose>{x:.4f} 0.16 -0.14 0 0 0</pose>\n"
-            '      <link name="ring">\n'
-            "        <gravity>false</gravity>\n"
-            "        <inertial><mass>0.005</mass><inertia>"
-            "<ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>\n"
-            '        <visual name="ring">\n'
-            "          <geometry><cylinder><radius>{r:.4f}</radius>"
-            "<length>{h:.4f}</length></cylinder></geometry>\n"
-            "          <material>\n"
-            "            <ambient>0.04 0.42 0.12 1</ambient>\n"
-            "            <diffuse>0.06 0.70 0.20 1</diffuse>\n"
-            "            <emissive>0.02 0.16 0.05 1</emissive>\n"
-            "          </material>\n"
-            "        </visual>\n"
-            "      </link>\n    </model>\n\n".format(
-                i=i, x=x0 + (i - 1) * pitch, r=R, h=th))
+    out = ['    <!-- 放料判定指示环（无碰撞；放料后 set_pose 到盘位，包住圆柱侧边；'
+           '绿=放对 / 红=放错） -->\n']
+    for name, y_park, col in (("marker", 0.16, MARKER_GREEN),
+                              ("marker_wrong", 0.20, MARKER_RED)):
+        amb, dif, emi = col
+        for i in range(1, n + 1):
+            out.append(
+                '    <model name="{p}_{i:02d}">\n'
+                "      <static>false</static>\n"
+                "      <pose>{x:.4f} {y:.3f} -0.14 0 0 0</pose>\n"
+                '      <link name="ring">\n'
+                "        <gravity>false</gravity>\n"
+                "        <inertial><mass>0.005</mass><inertia>"
+                "<ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>\n"
+                '        <visual name="ring">\n'
+                "          <geometry><cylinder><radius>{r:.4f}</radius>"
+                "<length>{h:.4f}</length></cylinder></geometry>\n"
+                "          <material>\n"
+                "            <ambient>{a:.2f} {b:.2f} {c:.2f} 1</ambient>\n"
+                "            <diffuse>{d:.2f} {e:.2f} {f:.2f} 1</diffuse>\n"
+                "            <emissive>{g:.2f} {h2:.2f} {k:.2f} 1</emissive>\n"
+                "          </material>\n"
+                "        </visual>\n"
+                "      </link>\n    </model>\n\n".format(
+                    p=name, i=i, x=x0 + (i - 1) * pitch, y=y_park, r=R, h=th,
+                    a=amb[0], b=amb[1], c=amb[2],
+                    d=dif[0], e=dif[1], f=dif[2],
+                    g=emi[0], h2=emi[1], k=emi[2]))
     return "".join(out)
 
 
