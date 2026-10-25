@@ -72,8 +72,8 @@ cd ~/AIC_cv-dev
 | 四类缺陷识别都对 | 同上 + 看 CSV 类型列 vs 真值 | 逐位一致（按 slot_id 对） | ≈160 s |
 | 识别对随机几何也稳（泛化） | `./scripts/verify_sim_robust.sh` | 汇总表 0 误判 | ≈7 min |
 | TIMEOUT 兜底不崩 | `./scripts/run_sim.sh --drop-rate 0.6` | 巡视走完 12 位点、无 FAILURE | ≈120 s（M3 未重测） |
-| 边看画面边确认（判分绿/红 + 抓取过程 + 自由机位） | `ros2 launch aic_dashboard dashboard.launch.py vision_backend:=trad` | 浏览器 `127.0.0.1:8080`：12 格全绿、态势图 12 块落对应层位 | ≈150 s |
-| 识别失败现场证据 | `./scripts/run_sim.sh --vision trad --debug-dir logs/dbg` | `logs/dbg/vision_fail_*.png`（无 = 没判错过） | ≈150 s |
+| 边看画面边确认（判分绿/红 + 抓取过程 + 自由机位） | `ros2 launch aic_dashboard dashboard.launch.py vision_backend:=trad` | 浏览器 `127.0.0.1:8080`：12 格全绿、态势图 12 块落对应层位（已放料带绿环） | ≈145 s |
+| 识别失败现场证据 | `./scripts/run_sim.sh --vision trad --debug-dir logs/dbg` | `logs/dbg/vision_fail_*.png`（无 = 没判错过） | ≈145 s |
 
 ## 5. 运行模式：run_sim.sh 全参数
 

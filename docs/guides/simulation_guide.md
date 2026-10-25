@@ -91,9 +91,9 @@ base（底板后侧的两条 X 导轨 + X 电机，y ≈ −0.475）
 HANDLE 才平移到正上方下探。
 图像方向：**右 = +X（列增大），上 = −Y**。
 
-> 实拍请跑 `scripts/capture_storyboard.py` 重新抓：`docs/guides/assets/sim_camera_view.png`
-> 是 M2 夹爪 + 阶梯货架时代的旧图，末端与层位都已变。
-> 该图由 `ros2 run aic_gazebo_sim sim_snapshot.py` 直接抓取。
+> `docs/guides/assets/sim_camera_view.png` 是 M2 夹爪 + 阶梯货架时代的旧图，
+> 末端与层位都已变；要重抓用 `ros2 run aic_gazebo_sim sim_snapshot.py`
+> （跑起来后直接抓 `/camera/image` 与 `/scene/image`）。
 
 ## 3. 控制侧实现（gantry_controller.py）
 
