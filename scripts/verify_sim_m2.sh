@@ -160,6 +160,26 @@ for attempt in 1 2 3; do
   sleep 2
 done
 
+# 兜底：隔离分区（--domain auto）下 pose/info 的 discovery 偶发拿不到帧，
+# 但 `ign model --model X --pose` 走的是 service，稳定得多。逐块查一遍，
+# 拼成 check_sim_m2.parse_pose 认的文本格式（name: "material_NN" + position{...}）。
+if ! grep -q 'material_' "${POSE}" 2>/dev/null; then
+  echo "[verify] pose/info 无输出，改用 ign model 逐块查询（service 通道）"
+  : > "${POSE}"
+  for k in $(seq 1 "${N_SLOTS}"); do
+    mname="$(printf 'material_%02d' "${k}")"
+    xyz="$(ign model --model "${mname}" --pose 2>/dev/null \
+           | awk '/Pose \[ XYZ/{getline; gsub(/[][ ]+/," "); print; exit}')"
+    if [[ -n "${xyz}" ]]; then
+      # shellcheck disable=SC2086
+      set -- ${xyz}
+      printf 'name: "%s"\nposition { x: %s y: %s z: %s }\n' \
+        "${mname}" "$1" "$2" "$3" >> "${POSE}"
+    fi
+  done
+  grep -c '^name:' "${POSE}" | sed 's/^/[verify] 兜底取到物料数：/'
+fi
+
 echo "[verify] 断言 -----------------------------------------------------------------"
 /usr/bin/python3 scripts/check_sim_m2.py \
   --results "${CSV}" --log "${LOG}" --pose "${POSE}"
