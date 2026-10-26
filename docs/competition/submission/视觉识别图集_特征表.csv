@@ -1,13 +1,13 @@
 ﻿frame,gt,pred,r,frac,circ,rad,elong,drop,why,verdict
-vision_20261026_135410_scratch.png,1,1,84.86,0.0107,0.118,0.213,2.06,60.3,划痕判据： fill=0.19 elong=2.1 frac=0.011,correct
-vision_20261026_135442_scratch.png,1,1,84.86,0.0107,0.114,0.211,2.06,60.7,划痕判据： fill=0.19 elong=2.1 frac=0.011,correct
-vision_20261026_135552_scratch.png,1,1,84.86,0.011,0.118,0.205,2.1,59.7,划痕判据： fill=0.19 elong=2.1 frac=0.011,correct
-vision_20261026_135339_stain.png,2,2,84.86,0.023,0.981,0.106,1.04,76.5,污渍判据： circ=0.98 sol=1.06 frac=0.023,correct
-vision_20261026_135427_stain.png,2,2,84.86,0.023,0.983,0.119,1.04,76.5,污渍判据： circ=0.98 sol=1.06 frac=0.023,correct
-vision_20261026_135538_stain.png,2,2,84.96,0.0231,0.973,0.117,1.04,76.4,污渍判据： circ=0.97 sol=1.06 frac=0.023,correct
-vision_20261026_135355_chip.png,3,3,84.87,0.0087,0.494,0.873,3.0,79.6,破损判据： rad=0.87 elong=3.0 frac=0.009,correct
-vision_20261026_135512_chip.png,3,3,84.77,0.0073,0.571,0.876,2.29,82.0,破损判据： rad=0.88 elong=2.3 frac=0.007,correct
-vision_20261026_135607_chip.png,3,3,84.99,0.0109,0.549,0.869,2.45,81.1,破损判据： rad=0.87 elong=2.4 frac=0.011,correct
-vision_20261026_135324_hole.png,4,4,84.86,0.0158,0.27,0.116,1.15,60.4,hole enclosed=1.22 frac=0.016,correct
-vision_20261026_135458_hole.png,4,4,84.88,0.0159,0.276,0.111,1.15,60.1,hole enclosed=1.20 frac=0.016,correct
-vision_20261026_135525_hole.png,4,4,84.86,0.0155,0.265,0.099,1.14,61.0,hole enclosed=1.26 frac=0.016,correct
+vision_20261026_141040_scratch.png,1,1,84.86,0.0107,0.117,0.209,2.1,60.2,划痕判据： fill=0.19 elong=2.1 frac=0.011,correct
+vision_20261026_141112_scratch.png,1,1,84.86,0.0107,0.117,0.203,2.1,60.6,划痕判据： fill=0.19 elong=2.1 frac=0.011,correct
+vision_20261026_141224_scratch.png,1,1,84.96,0.0108,0.119,0.211,2.1,59.7,划痕判据： fill=0.19 elong=2.1 frac=0.011,correct
+vision_20261026_141010_stain.png,2,2,84.88,0.023,0.969,0.12,1.04,76.5,污渍判据： circ=0.97 sol=1.05 frac=0.023,correct
+vision_20261026_141057_stain.png,2,2,84.86,0.0232,0.957,0.107,1.0,76.3,污渍判据： circ=0.96 sol=1.05 frac=0.023,correct
+vision_20261026_141210_stain.png,2,2,84.88,0.023,0.975,0.108,1.0,76.6,污渍判据： circ=0.98 sol=1.06 frac=0.023,correct
+vision_20261026_141025_chip.png,3,3,84.79,0.012,0.532,0.865,2.79,81.9,破损判据： rad=0.86 elong=2.8 frac=0.012,correct
+vision_20261026_141142_chip.png,3,3,84.81,0.0117,0.561,0.859,2.32,80.0,破损判据： rad=0.86 elong=2.3 frac=0.012,correct
+vision_20261026_141240_chip.png,3,3,84.76,0.0136,0.568,0.856,2.39,80.5,破损判据： rad=0.86 elong=2.4 frac=0.014,correct
+vision_20261026_140955_hole.png,4,4,84.86,0.0154,0.27,0.113,1.13,60.8,hole enclosed=1.25 frac=0.015,correct
+vision_20261026_141129_hole.png,4,4,84.86,0.0157,0.275,0.1,1.1,60.8,hole enclosed=1.23 frac=0.016,correct
+vision_20261026_141156_hole.png,4,4,84.86,0.0157,0.277,0.123,1.14,60.5,hole enclosed=1.24 frac=0.016,correct
