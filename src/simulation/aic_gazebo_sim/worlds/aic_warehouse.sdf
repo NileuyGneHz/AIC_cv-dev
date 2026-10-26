@@ -802,7 +802,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube_02.obj</uri></mesh></geometry>
           <material>
             <ambient>0.04 0.42 0.12 1</ambient>
             <diffuse>0.06 0.70 0.20 1</diffuse>
@@ -904,7 +904,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube_08.obj</uri></mesh></geometry>
           <material>
             <ambient>0.04 0.42 0.12 1</ambient>
             <diffuse>0.06 0.70 0.20 1</diffuse>
@@ -921,7 +921,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube_09.obj</uri></mesh></geometry>
           <material>
             <ambient>0.04 0.42 0.12 1</ambient>
             <diffuse>0.06 0.70 0.20 1</diffuse>
@@ -1006,7 +1006,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube_02.obj</uri></mesh></geometry>
           <material>
             <ambient>0.42 0.04 0.04 1</ambient>
             <diffuse>0.78 0.08 0.08 1</diffuse>
@@ -1108,7 +1108,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube_08.obj</uri></mesh></geometry>
           <material>
             <ambient>0.42 0.04 0.04 1</ambient>
             <diffuse>0.78 0.08 0.08 1</diffuse>
@@ -1125,7 +1125,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube_09.obj</uri></mesh></geometry>
           <material>
             <ambient>0.42 0.04 0.04 1</ambient>
             <diffuse>0.78 0.08 0.08 1</diffuse>

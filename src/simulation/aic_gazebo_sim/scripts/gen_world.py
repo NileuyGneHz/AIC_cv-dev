@@ -613,20 +613,31 @@ def notch_disc_mesh(r, th, a0, da, depth_frac, n=160):
         r, math.degrees(da)))
 
 
-def tube_mesh(r_out, r_in, th, n=192):
-    """圆环管（放料标记）：外壁 + 内壁 + 上下环面。中间是空的，不挡盘面缺口。"""
+def tube_mesh(r_out, r_in, th, a0=0.0, da=0.0, n=192):
+    """圆环管（放料标记）：外壁 + 内壁 + 上下环面。中间是空的，不挡盘面图案。
+
+    da > 0 时在 [a0, a0+da] 这一段**开口**（给缺角盘用）：环也在缺口处断开，
+    否则管壁会横跨缺口、把咬口「补」上一道 0.5 mm 的绿边。
+    开口两端各补一块径向端面，免得从缺口看进去能看穿管壁。
+    """
     half = 0.5 * th
+    closed = da <= 0.0
+    if closed:
+        angs = [2.0 * math.pi * k / n for k in range(n)]
+    else:
+        span = 2.0 * math.pi - da
+        angs = [a0 + da + span * k / n for k in range(n + 1)]
     verts = []
-    for k in range(n):
-        a = 2.0 * math.pi * k / n
+    for a in angs:
         c, s = math.cos(a), math.sin(a)
-        verts.append((r_out * c, r_out * s, half))    # 0
-        verts.append((r_out * c, r_out * s, -half))   # 1
-        verts.append((r_in * c, r_in * s, half))      # 2
-        verts.append((r_in * c, r_in * s, -half))     # 3
+        verts.append((r_out * c, r_out * s, half))    # ot
+        verts.append((r_out * c, r_out * s, -half))   # ob
+        verts.append((r_in * c, r_in * s, half))      # it
+        verts.append((r_in * c, r_in * s, -half))     # ib
     faces = []
-    for k in range(n):
-        j = (k + 1) % n
+    m = len(angs)
+    for k in range(m if closed else m - 1):
+        j = (k + 1) % m
         ot_i, ob_i, it_i, ib_i = 4 * k, 4 * k + 1, 4 * k + 2, 4 * k + 3
         ot_j, ob_j, it_j, ib_j = 4 * j, 4 * j + 1, 4 * j + 2, 4 * j + 3
         faces.append((ot_i + 1, ob_i + 1, ob_j + 1))   # 外壁
@@ -637,15 +648,26 @@ def tube_mesh(r_out, r_in, th, n=192):
         faces.append((ot_i + 1, it_j + 1, it_i + 1))
         faces.append((ob_i + 1, ib_i + 1, ib_j + 1))   # 下环面（-z）
         faces.append((ob_i + 1, ib_j + 1, ob_j + 1))
-    return _obj_text(verts, faces, "marker tube")
+    if not closed:
+        faces.append((1, 3, 4))                        # 起始端面（法线 -切向）
+        faces.append((1, 4, 2))
+        b = 4 * (m - 1)
+        faces.append((b + 1, b + 2, b + 4))            # 末端面（法线 +切向）
+        faces.append((b + 1, b + 4, b + 3))
+    return _obj_text(verts, faces,
+                     "marker tube" if closed else "marker tube (notched)")
 
 
 def write_plate_meshes(layout, seed=None):
-    """写出缺角盘与标记环的网格，返回 {物料号: 文件名}（只含缺角盘）。"""
+    """写出缺角盘 + 对应开口的标记环网格。
+
+    返回 {物料号: 开口环文件名}：只有缺角盘有开口环，其余物料用整圆环。
+    """
     os.makedirs(MESH_DIR, exist_ok=True)
     plate = layout["plate"]
     r = float(plate["diameter"]) / 2.0
     th = float(plate["thickness"])
+    wall = float((layout.get("marker") or {}).get("wall_m", 0.0005))
     types = material_types(layout, len(slot_centers(layout)))
     out = {}
     for i, t in enumerate(types, start=1):
@@ -658,10 +680,12 @@ def write_plate_meshes(layout, seed=None):
         name = "plate_{:02d}.obj".format(i)
         with io.open(os.path.join(MESH_DIR, name), "w", encoding="utf-8") as f:
             f.write(notch_disc_mesh(r, th, a0, da, depth))
-        out[i] = name
-    name = "marker_tube.obj"
-    wall = float((layout.get("marker") or {}).get("wall_m", 0.0005))
-    with io.open(os.path.join(MESH_DIR, name), "w", encoding="utf-8") as f:
+        # 同一角度开一口的环：缺角盘套环后，环也在缺口处断开
+        ring = "marker_tube_{:02d}.obj".format(i)
+        with io.open(os.path.join(MESH_DIR, ring), "w", encoding="utf-8") as f:
+            f.write(tube_mesh(r + wall, r, th, a0=a0, da=da))
+        out[i] = ring
+    with io.open(os.path.join(MESH_DIR, "marker_tube.obj"), "w", encoding="utf-8") as f:
         f.write(tube_mesh(r + wall, r, th))
     return out
 
@@ -968,7 +992,7 @@ MARKER_RED = ((0.42, 0.04, 0.04), (0.78, 0.08, 0.08), (0.20, 0.02, 0.02))
 MARKER_WALL_M = 0.0005
 
 
-def marker_model(layout):
+def marker_model(layout, tubes=None):
     """放料判定指示环：**无碰撞**的绿/红薄套，放料后 set_pose 到该盘位置。
 
     Fortress 没有「运行时改材质」的服务，所以不能直接把盘侧边的材质刷成颜色。
@@ -984,7 +1008,11 @@ def marker_model(layout):
     1. **没有 collision**：不参与物理，不会顶住盘或货架，也不影响落位判定；
     2. **gravity=false**：停在底板下方（z=-0.14）不会掉；
     3. 顶面比盘顶低 0.5 mm：不盖住盘面，两个视觉相机看到的缺陷特征不变。
+
+    tubes：{物料号: 开口环网格文件名}，缺角盘用**同角度开口**的环（见 write_plate_meshes），
+    否则整圆环会在缺口上横跨一道 0.5 mm 的色边。
     """
+    tubes = tubes or {}
     plate = layout["plate"]
     r = float(plate["diameter"]) / 2.0
     th = float(plate["thickness"])
@@ -1018,7 +1046,8 @@ def marker_model(layout):
                 "          </material>\n"
                 "        </visual>\n"
                 "      </link>\n    </model>\n\n".format(
-                    TUBE_MESH_URI,
+                    ("file://" + os.path.join(MESH_DIR, tubes[i])
+                     if i in tubes else TUBE_MESH_URI),
                     p=name, i=i, x=x0 + (i - 1) * pitch, y=y_park, r=R, h=th,
                     a=amb[0], b=amb[1], c=amb[2],
                     d=dif[0], e=dif[1], f=dif[2],
@@ -1029,13 +1058,13 @@ def marker_model(layout):
 def build_sdf(layout, seed=None):
     slots = slot_centers(layout)
     types = material_types(layout, len(slots))
-    # 先把缺角盘 / 标记环的网格写出来（model:// 引用，必须早于世界加载）
-    write_plate_meshes(layout, seed)
+    # 先把缺角盘 / 标记环的网格写出来（file:// 引用，必须早于世界加载）
+    tubes = write_plate_meshes(layout, seed)
 
     out = [HEADER, base_plate_model(layout), rack_shelf_model(layout),
            staging_table_model(layout), material_park_model(layout),
            recycle_marker(layout), ee_cam_model(layout),
-           camera_post_model(layout), rack_cam_model(layout), marker_model(layout),
+           camera_post_model(layout), rack_cam_model(layout), marker_model(layout, tubes),
            scene_cam(layout)]
     out.append("    <!-- ===== 12 块圆形物料（开局停在底板下方的停料托板上，运行时逐块 set_pose 上料；"
                "类型 = materials.types[序号-1]）===== -->\n")

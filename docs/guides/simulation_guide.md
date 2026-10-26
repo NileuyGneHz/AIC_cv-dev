@@ -278,6 +278,8 @@ sensor-only 相机（没有 visual，场景里看不见、不参与物理），�
   顶面比盘顶**低 0.5 mm**，所以俯视不会盖住盘面（缺陷判据、两个相机都不受影响）。
   为什么必须是**管**而不是实心套筒：实心圆柱会把缺角盘的缺口一起盖住（管状环中间是空的，
   缺口照样透出来）。管网格见 `worlds/meshes/marker_tube.obj`。
+  缺角盘另有**同角度开口**的环（`worlds/meshes/marker_tube_NN.obj`，开口两端补了径向端面），
+  否则整圆环会在缺口上横跨一道 0.5 mm 色边；生成时由 `write_plate_meshes` 一并写出。
 - 判定口径与看板判分**同一份事实**：`judged_ok = (视觉判型 == sim_layout.materials.types[轮次-1])`。
   放对点亮绿环、放错点亮红环，另一只留在底板下不出现。
 - 控制器在放置序列里，`detach` + `signal_dwell_s` 之后发 `marker` 信号：
