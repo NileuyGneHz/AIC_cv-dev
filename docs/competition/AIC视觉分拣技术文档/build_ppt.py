@@ -365,8 +365,8 @@ def build():
     header(s, 7, "关键算法 · 四类缺陷判据", "几何量优先，几何失效时换物理量——判据链按「误判代价」排序")
     data = [
         ["类型", "主判据", "阈值", "实测余量"],
-        ["3 缺角", "贴盘缘（重心半径）+ 非细长（挡掉盘缘暗沿）", "rad ≥ 0.70, elong ≤ 4.5",
-         "rad 0.87 vs 0.21（4 倍）"],
+        ["3 缺角", "贴盘缘（重心半径）+ 非细长（挡掉盘缘暗沿）", "rad ≥ 0.62, elong ≤ 4.5",
+         "rad 0.78 vs 0.21（3.7 倍）"],
         ["4 孔洞", "空心轮廓「围住」的像素占比 enclosed", "enclosed ≥ 0.30, 0.004 ≤ frac ≤ 0.060",
          "1.22 vs 0.00（其余三类恒 0）"],
         ["2 污渍", "圆度 + 凸包填充（实心圆斑）", "circ ≥ 0.60, solidity ≥ 0.85",
@@ -377,7 +377,7 @@ def build():
     rect(s, MARGIN, 5.12, CONTENT_W, 1.45, fill=RGBColor(0xF7, 0xF9, 0xFC), line=LINE)
     tf = textbox(s, MARGIN + 0.22, 5.26, CONTENT_W - 0.44, 1.2)
     para(tf, "两个设计取舍", 12, True, NAVY, first=True, space_after=5)
-    para(tf, "① 阈值不贴实测值：缺角 rad 实测 0.87，阈值取 0.70；孔洞 enclosed 实测 1.22，阈值取 0.30 —— "
+    para(tf, "① 阈值不贴实测值：缺角 rad 实测 0.78，阈值取 0.62；孔洞 enclosed 实测 1.22，阈值取 0.30 —— "
              "为「精修被拒、退回整像素圆」的最坏情况留口子。",
          10.5, False, TEXT, space_after=3, line=1.2)
     para(tf, "② 盘缘暗沿会伪装成缺角：圆柱侧壁的暗沿同样贴边（rad 0.87），但它是细长条（elong 7–11）；"
