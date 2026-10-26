@@ -785,7 +785,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><cylinder><radius>0.0405</radius><length>0.0060</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
           <material>
             <ambient>0.04 0.42 0.12 1</ambient>
             <diffuse>0.06 0.70 0.20 1</diffuse>
@@ -802,7 +802,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><cylinder><radius>0.0405</radius><length>0.0060</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
           <material>
             <ambient>0.04 0.42 0.12 1</ambient>
             <diffuse>0.06 0.70 0.20 1</diffuse>
@@ -819,7 +819,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><cylinder><radius>0.0405</radius><length>0.0060</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
           <material>
             <ambient>0.04 0.42 0.12 1</ambient>
             <diffuse>0.06 0.70 0.20 1</diffuse>
@@ -836,7 +836,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><cylinder><radius>0.0405</radius><length>0.0060</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
           <material>
             <ambient>0.04 0.42 0.12 1</ambient>
             <diffuse>0.06 0.70 0.20 1</diffuse>
@@ -853,7 +853,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><cylinder><radius>0.0405</radius><length>0.0060</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
           <material>
             <ambient>0.04 0.42 0.12 1</ambient>
             <diffuse>0.06 0.70 0.20 1</diffuse>
@@ -870,7 +870,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><cylinder><radius>0.0405</radius><length>0.0060</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
           <material>
             <ambient>0.04 0.42 0.12 1</ambient>
             <diffuse>0.06 0.70 0.20 1</diffuse>
@@ -887,7 +887,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><cylinder><radius>0.0405</radius><length>0.0060</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
           <material>
             <ambient>0.04 0.42 0.12 1</ambient>
             <diffuse>0.06 0.70 0.20 1</diffuse>
@@ -904,7 +904,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><cylinder><radius>0.0405</radius><length>0.0060</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
           <material>
             <ambient>0.04 0.42 0.12 1</ambient>
             <diffuse>0.06 0.70 0.20 1</diffuse>
@@ -921,7 +921,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><cylinder><radius>0.0405</radius><length>0.0060</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
           <material>
             <ambient>0.04 0.42 0.12 1</ambient>
             <diffuse>0.06 0.70 0.20 1</diffuse>
@@ -938,7 +938,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><cylinder><radius>0.0405</radius><length>0.0060</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
           <material>
             <ambient>0.04 0.42 0.12 1</ambient>
             <diffuse>0.06 0.70 0.20 1</diffuse>
@@ -955,7 +955,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><cylinder><radius>0.0405</radius><length>0.0060</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
           <material>
             <ambient>0.04 0.42 0.12 1</ambient>
             <diffuse>0.06 0.70 0.20 1</diffuse>
@@ -972,7 +972,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><cylinder><radius>0.0405</radius><length>0.0060</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
           <material>
             <ambient>0.04 0.42 0.12 1</ambient>
             <diffuse>0.06 0.70 0.20 1</diffuse>
@@ -989,7 +989,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><cylinder><radius>0.0405</radius><length>0.0060</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
           <material>
             <ambient>0.42 0.04 0.04 1</ambient>
             <diffuse>0.78 0.08 0.08 1</diffuse>
@@ -1006,7 +1006,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><cylinder><radius>0.0405</radius><length>0.0060</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
           <material>
             <ambient>0.42 0.04 0.04 1</ambient>
             <diffuse>0.78 0.08 0.08 1</diffuse>
@@ -1023,7 +1023,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><cylinder><radius>0.0405</radius><length>0.0060</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
           <material>
             <ambient>0.42 0.04 0.04 1</ambient>
             <diffuse>0.78 0.08 0.08 1</diffuse>
@@ -1040,7 +1040,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><cylinder><radius>0.0405</radius><length>0.0060</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
           <material>
             <ambient>0.42 0.04 0.04 1</ambient>
             <diffuse>0.78 0.08 0.08 1</diffuse>
@@ -1057,7 +1057,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><cylinder><radius>0.0405</radius><length>0.0060</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
           <material>
             <ambient>0.42 0.04 0.04 1</ambient>
             <diffuse>0.78 0.08 0.08 1</diffuse>
@@ -1074,7 +1074,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><cylinder><radius>0.0405</radius><length>0.0060</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
           <material>
             <ambient>0.42 0.04 0.04 1</ambient>
             <diffuse>0.78 0.08 0.08 1</diffuse>
@@ -1091,7 +1091,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><cylinder><radius>0.0405</radius><length>0.0060</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
           <material>
             <ambient>0.42 0.04 0.04 1</ambient>
             <diffuse>0.78 0.08 0.08 1</diffuse>
@@ -1108,7 +1108,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><cylinder><radius>0.0405</radius><length>0.0060</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
           <material>
             <ambient>0.42 0.04 0.04 1</ambient>
             <diffuse>0.78 0.08 0.08 1</diffuse>
@@ -1125,7 +1125,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><cylinder><radius>0.0405</radius><length>0.0060</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
           <material>
             <ambient>0.42 0.04 0.04 1</ambient>
             <diffuse>0.78 0.08 0.08 1</diffuse>
@@ -1142,7 +1142,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><cylinder><radius>0.0405</radius><length>0.0060</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
           <material>
             <ambient>0.42 0.04 0.04 1</ambient>
             <diffuse>0.78 0.08 0.08 1</diffuse>
@@ -1159,7 +1159,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><cylinder><radius>0.0405</radius><length>0.0060</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
           <material>
             <ambient>0.42 0.04 0.04 1</ambient>
             <diffuse>0.78 0.08 0.08 1</diffuse>
@@ -1176,7 +1176,7 @@
         <gravity>false</gravity>
         <inertial><mass>0.005</mass><inertia><ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>
         <visual name="ring">
-          <geometry><cylinder><radius>0.0405</radius><length>0.0060</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/marker_tube.obj</uri></mesh></geometry>
           <material>
             <ambient>0.42 0.04 0.04 1</ambient>
             <diffuse>0.78 0.08 0.08 1</diffuse>
@@ -1233,10 +1233,65 @@
             <specular>0.0 0.0 0.0 1</specular>
           </material>
         </visual>
-        <visual name="defect_scratch">
-          <pose>0.004 -0.006 0.00340 0 0 0.436</pose>
-          <geometry><box><size>0.052 0.0025 0.0008</size></box></geometry>
-          <material><ambient>0.20 0.20 0.21 1</ambient><diffuse>0.24 0.24 0.25 1</diffuse></material>
+        <visual name="defect_1_00">
+          <pose>0.0148 -0.0100 0.00340 0 0 2.0407</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_01">
+          <pose>0.0132 -0.0077 0.00340 0 0 2.2824</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_02">
+          <pose>0.0112 -0.0059 0.00340 0 0 2.5240</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_03">
+          <pose>0.0088 -0.0046 0.00340 0 0 2.7657</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_04">
+          <pose>0.0061 -0.0039 0.00340 0 0 3.0074</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_05">
+          <pose>0.0034 -0.0039 0.00340 0 0 3.2490</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_06">
+          <pose>0.0007 -0.0045 0.00340 0 0 -2.7925</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_07">
+          <pose>-0.0018 -0.0057 0.00340 0 0 -2.5508</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_08">
+          <pose>-0.0038 -0.0075 0.00340 0 0 -2.3092</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_09">
+          <pose>-0.0054 -0.0098 0.00340 0 0 -2.0675</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_10">
+          <pose>-0.0064 -0.0123 0.00340 0 0 -1.8258</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_11">
+          <pose>-0.0068 -0.0150 0.00340 0 0 -1.5842</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
         </visual>
       </link>
     </model>
@@ -1257,22 +1312,12 @@
           <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
         </collision>
         <visual name="disc">
-          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/plate_02.obj</uri></mesh></geometry>
           <material>
             <ambient>0.42 0.44 0.46 1</ambient>
             <diffuse>0.50 0.52 0.54 1</diffuse>
             <specular>0.0 0.0 0.0 1</specular>
           </material>
-        </visual>
-        <visual name="defect_break_a">
-          <pose>0.0103 -0.0077 0.00340 0 0 -0.7330</pose>
-          <geometry><box><size>0.0170 0.0022 0.0008</size></box></geometry>
-          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
-        </visual>
-        <visual name="defect_break_b">
-          <pose>0.0052 0.0064 0.00340 0 0 1.4312</pose>
-          <geometry><box><size>0.0170 0.0022 0.0008</size></box></geometry>
-          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
         </visual>
       </link>
     </model>
@@ -1300,9 +1345,9 @@
             <specular>0.0 0.0 0.0 1</specular>
           </material>
         </visual>
-        <visual name="defect_stain">
-          <pose>0.008 0.004 0.00320 0 0 0</pose>
-          <geometry><cylinder><radius>0.012</radius><length>0.0006</length></cylinder></geometry>
+        <visual name="defect_2_00">
+          <pose>0.0020 -0.0040 0.00340 0 0 0</pose>
+          <geometry><cylinder><radius>0.0060</radius><length>0.0006</length></cylinder></geometry>
           <material><ambient>0.16 0.13 0.10 1</ambient><diffuse>0.20 0.16 0.12 1</diffuse></material>
         </visual>
       </link>
@@ -1331,10 +1376,20 @@
             <specular>0.0 0.0 0.0 1</specular>
           </material>
         </visual>
-        <visual name="defect_hole">
-          <pose>-0.004 0.012 0.00320 0 0 0</pose>
-          <geometry><cylinder><radius>0.0055</radius><length>0.0006</length></cylinder></geometry>
-          <material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material>
+        <visual name="defect_4_00">
+          <pose>0.0037 -0.0087 0.00340 0 0 0.3491</pose>
+          <geometry><box><size>0.0191 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_4_01">
+          <pose>0.0052 -0.0001 0.00340 0 0 2.4435</pose>
+          <geometry><box><size>0.0191 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_4_02">
+          <pose>-0.0030 -0.0031 0.00340 0 0 -1.7453</pose>
+          <geometry><box><size>0.0191 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
         </visual>
       </link>
     </model>
@@ -1362,9 +1417,9 @@
             <specular>0.0 0.0 0.0 1</specular>
           </material>
         </visual>
-        <visual name="defect_stain">
-          <pose>0.008 0.004 0.00320 0 0 0</pose>
-          <geometry><cylinder><radius>0.012</radius><length>0.0006</length></cylinder></geometry>
+        <visual name="defect_2_00">
+          <pose>0.0020 -0.0040 0.00340 0 0 0</pose>
+          <geometry><cylinder><radius>0.0060</radius><length>0.0006</length></cylinder></geometry>
           <material><ambient>0.16 0.13 0.10 1</ambient><diffuse>0.20 0.16 0.12 1</diffuse></material>
         </visual>
       </link>
@@ -1393,10 +1448,65 @@
             <specular>0.0 0.0 0.0 1</specular>
           </material>
         </visual>
-        <visual name="defect_scratch">
-          <pose>0.004 -0.006 0.00340 0 0 0.436</pose>
-          <geometry><box><size>0.052 0.0025 0.0008</size></box></geometry>
-          <material><ambient>0.20 0.20 0.21 1</ambient><diffuse>0.24 0.24 0.25 1</diffuse></material>
+        <visual name="defect_1_00">
+          <pose>0.0148 -0.0100 0.00340 0 0 2.0407</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_01">
+          <pose>0.0132 -0.0077 0.00340 0 0 2.2824</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_02">
+          <pose>0.0112 -0.0059 0.00340 0 0 2.5240</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_03">
+          <pose>0.0088 -0.0046 0.00340 0 0 2.7657</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_04">
+          <pose>0.0061 -0.0039 0.00340 0 0 3.0074</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_05">
+          <pose>0.0034 -0.0039 0.00340 0 0 3.2490</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_06">
+          <pose>0.0007 -0.0045 0.00340 0 0 -2.7925</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_07">
+          <pose>-0.0018 -0.0057 0.00340 0 0 -2.5508</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_08">
+          <pose>-0.0038 -0.0075 0.00340 0 0 -2.3092</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_09">
+          <pose>-0.0054 -0.0098 0.00340 0 0 -2.0675</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_10">
+          <pose>-0.0064 -0.0123 0.00340 0 0 -1.8258</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_11">
+          <pose>-0.0068 -0.0150 0.00340 0 0 -1.5842</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
         </visual>
       </link>
     </model>
@@ -1424,10 +1534,20 @@
             <specular>0.0 0.0 0.0 1</specular>
           </material>
         </visual>
-        <visual name="defect_hole">
-          <pose>-0.004 0.012 0.00320 0 0 0</pose>
-          <geometry><cylinder><radius>0.0055</radius><length>0.0006</length></cylinder></geometry>
-          <material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material>
+        <visual name="defect_4_00">
+          <pose>0.0037 -0.0087 0.00340 0 0 0.3491</pose>
+          <geometry><box><size>0.0191 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_4_01">
+          <pose>0.0052 -0.0001 0.00340 0 0 2.4435</pose>
+          <geometry><box><size>0.0191 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_4_02">
+          <pose>-0.0030 -0.0031 0.00340 0 0 -1.7453</pose>
+          <geometry><box><size>0.0191 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
         </visual>
       </link>
     </model>
@@ -1448,22 +1568,12 @@
           <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
         </collision>
         <visual name="disc">
-          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/plate_08.obj</uri></mesh></geometry>
           <material>
             <ambient>0.42 0.44 0.46 1</ambient>
             <diffuse>0.50 0.52 0.54 1</diffuse>
             <specular>0.0 0.0 0.0 1</specular>
           </material>
-        </visual>
-        <visual name="defect_break_a">
-          <pose>0.0103 -0.0077 0.00340 0 0 -0.7330</pose>
-          <geometry><box><size>0.0170 0.0022 0.0008</size></box></geometry>
-          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
-        </visual>
-        <visual name="defect_break_b">
-          <pose>0.0052 0.0064 0.00340 0 0 1.4312</pose>
-          <geometry><box><size>0.0170 0.0022 0.0008</size></box></geometry>
-          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
         </visual>
       </link>
     </model>
@@ -1484,22 +1594,12 @@
           <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
         </collision>
         <visual name="disc">
-          <geometry><cylinder><radius>0.04</radius><length>0.006</length></cylinder></geometry>
+          <geometry><mesh><uri>file:///home/nileuy/AIC_cv-dev/src/simulation/aic_gazebo_sim/worlds/meshes/plate_09.obj</uri></mesh></geometry>
           <material>
             <ambient>0.42 0.44 0.46 1</ambient>
             <diffuse>0.50 0.52 0.54 1</diffuse>
             <specular>0.0 0.0 0.0 1</specular>
           </material>
-        </visual>
-        <visual name="defect_break_a">
-          <pose>0.0103 -0.0077 0.00340 0 0 -0.7330</pose>
-          <geometry><box><size>0.0170 0.0022 0.0008</size></box></geometry>
-          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
-        </visual>
-        <visual name="defect_break_b">
-          <pose>0.0052 0.0064 0.00340 0 0 1.4312</pose>
-          <geometry><box><size>0.0170 0.0022 0.0008</size></box></geometry>
-          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
         </visual>
       </link>
     </model>
@@ -1527,10 +1627,65 @@
             <specular>0.0 0.0 0.0 1</specular>
           </material>
         </visual>
-        <visual name="defect_scratch">
-          <pose>0.004 -0.006 0.00340 0 0 0.436</pose>
-          <geometry><box><size>0.052 0.0025 0.0008</size></box></geometry>
-          <material><ambient>0.20 0.20 0.21 1</ambient><diffuse>0.24 0.24 0.25 1</diffuse></material>
+        <visual name="defect_1_00">
+          <pose>0.0148 -0.0100 0.00340 0 0 2.0407</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_01">
+          <pose>0.0132 -0.0077 0.00340 0 0 2.2824</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_02">
+          <pose>0.0112 -0.0059 0.00340 0 0 2.5240</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_03">
+          <pose>0.0088 -0.0046 0.00340 0 0 2.7657</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_04">
+          <pose>0.0061 -0.0039 0.00340 0 0 3.0074</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_05">
+          <pose>0.0034 -0.0039 0.00340 0 0 3.2490</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_06">
+          <pose>0.0007 -0.0045 0.00340 0 0 -2.7925</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_07">
+          <pose>-0.0018 -0.0057 0.00340 0 0 -2.5508</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_08">
+          <pose>-0.0038 -0.0075 0.00340 0 0 -2.3092</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_09">
+          <pose>-0.0054 -0.0098 0.00340 0 0 -2.0675</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_10">
+          <pose>-0.0064 -0.0123 0.00340 0 0 -1.8258</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_1_11">
+          <pose>-0.0068 -0.0150 0.00340 0 0 -1.5842</pose>
+          <geometry><box><size>0.0044 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
         </visual>
       </link>
     </model>
@@ -1558,9 +1713,9 @@
             <specular>0.0 0.0 0.0 1</specular>
           </material>
         </visual>
-        <visual name="defect_stain">
-          <pose>0.008 0.004 0.00320 0 0 0</pose>
-          <geometry><cylinder><radius>0.012</radius><length>0.0006</length></cylinder></geometry>
+        <visual name="defect_2_00">
+          <pose>0.0020 -0.0040 0.00340 0 0 0</pose>
+          <geometry><cylinder><radius>0.0060</radius><length>0.0006</length></cylinder></geometry>
           <material><ambient>0.16 0.13 0.10 1</ambient><diffuse>0.20 0.16 0.12 1</diffuse></material>
         </visual>
       </link>
@@ -1589,10 +1744,20 @@
             <specular>0.0 0.0 0.0 1</specular>
           </material>
         </visual>
-        <visual name="defect_hole">
-          <pose>-0.004 0.012 0.00320 0 0 0</pose>
-          <geometry><cylinder><radius>0.0055</radius><length>0.0006</length></cylinder></geometry>
-          <material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material>
+        <visual name="defect_4_00">
+          <pose>0.0037 -0.0087 0.00340 0 0 0.3491</pose>
+          <geometry><box><size>0.0191 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_4_01">
+          <pose>0.0052 -0.0001 0.00340 0 0 2.4435</pose>
+          <geometry><box><size>0.0191 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
+        </visual>
+        <visual name="defect_4_02">
+          <pose>-0.0030 -0.0031 0.00340 0 0 -1.7453</pose>
+          <geometry><box><size>0.0191 0.0016 0.0008</size></box></geometry>
+          <material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse></material>
         </visual>
       </link>
     </model>

@@ -23,16 +23,16 @@ import time
 
 import cv2
 import rclpy
-from rclpy.executors import ExternalShutdownException
 from cv_bridge import CvBridge
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
+from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Image
 from std_msgs.msg import Empty, String
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from defect_classifier import DEFAULT_RULES, TYPE_NAMES, classify   # noqa: E402
-from plate_detector import DetectorParams, detect                   # noqa: E402
+from defect_classifier import DEFAULT_RULES, TYPE_NAMES, classify
+from plate_detector import DetectorParams, detect
 
 
 class VisionTradNode(Node):
@@ -54,7 +54,10 @@ class VisionTradNode(Node):
             self.rules[k] = float(self.declare_parameter(k, float(v)).value)
         self.det = DetectorParams(
             dark_delta=float(self.declare_parameter("dark_delta", 30.0).value),
-            min_comp_area=int(self.declare_parameter("min_comp_area", 120).value),
+            # 最小连通域按盘面积比例给（0.0045），不再写死像素数：
+            # 官方 1.6 mm 细线轮廓在 168 px 盘径下只有 190~260 px，写死 120 会把它们滤掉。
+            min_comp_area_frac=float(
+                self.declare_parameter("min_comp_area_frac", 0.0045).value),
             roi_frac=float(self.declare_parameter("roi_frac", 0.93).value),
         )
 
@@ -87,7 +90,7 @@ class VisionTradNode(Node):
             # 识别只要灰度，进来就转掉：省一次全图 cvtColor，也保证下游只有一种编码
             self._frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding="mono8")
         except Exception as e:                                    # noqa: BLE001
-            self.get_logger().error("[vision] 图像转换失败: {}".format(e))
+            self.get_logger().error(f"[vision] 图像转换失败: {e}")
             return
         self._frame_rx = time.monotonic()
 
@@ -98,8 +101,7 @@ class VisionTradNode(Node):
         # 契约上等于「丢单」，现场也看不出是重复触发而不是识别失败。
         if now - self._last_pub < self.debounce_s:
             self.get_logger().info(
-                "[vision] 重复触发（距上次结果 {:.0f} ms < {:.0f} ms），忽略本次".format(
-                    (now - self._last_pub) * 1000.0, self.debounce_s * 1000.0))
+                f"[vision] 重复触发（距上次结果 {(now - self._last_pub) * 1000.0:.0f} ms < {self.debounce_s * 1000.0:.0f} ms），忽略本次")
             return
         if self._deadline is not None:
             self.get_logger().warn("[vision] 上一次请求未处理完，忽略本次")
@@ -119,24 +121,23 @@ class VisionTradNode(Node):
             if now < self._deadline:
                 return
             self.get_logger().warn(
-                "[vision] {:.2f}s 内没有等到可用新帧，本次不发结果"
+                f"[vision] {self.frame_wait_s:.2f}s 内没有等到可用新帧，本次不发结果"
                 "（相机帧率过低：查 gz_camera_bridge / RTF；若开着 Gazebo GUI，"
-                "见 README「GUI 不应与服务端同进程」）".format(self.frame_wait_s))
+                "见 README「GUI 不应与服务端同进程」）")
             if self.debug_dir and self._frame is not None:
                 self._dump_fail("nofresh")
             self._deadline = None
             return
         if now - self._frame_rx > self.max_stale_s:
             self.get_logger().warn(
-                "[vision] 图像已过期 {:.2f}s（>{:.2f}s），本次不发结果".format(
-                    now - self._frame_rx, self.max_stale_s))
+                f"[vision] 图像已过期 {now - self._frame_rx:.2f}s（>{self.max_stale_s:.2f}s），本次不发结果")
             self._deadline = None
             return
         # 坑：rclpy 定时器回调里抛异常会冒到 executor 把节点打死，单帧失败必须只影响单帧。
         try:
             done = self._process()
         except Exception as e:                                    # noqa: BLE001
-            self.get_logger().error("[vision] 识别异常，跳过本帧: {}".format(e))
+            self.get_logger().error(f"[vision] 识别异常，跳过本帧: {e}")
             done = False
         if done:
             self._deadline = None
@@ -157,7 +158,7 @@ class VisionTradNode(Node):
             return False
         tid, why = classify(res["comps"], self.rules)
         if tid == 0:
-            self.get_logger().warn("[vision] 本帧盘面无缺陷候选（{}），等下一帧重试".format(why))
+            self.get_logger().warn(f"[vision] 本帧盘面无缺陷候选（{why}），等下一帧重试")
             return False
 
         msg = String()
@@ -179,7 +180,7 @@ class VisionTradNode(Node):
                 time.strftime("%Y%m%d_%H%M%S"), tag, int(time.time() * 1000) % 1000)
             cv2.imwrite(os.path.join(self.debug_dir, name), self._frame)
         except Exception as e:                                    # noqa: BLE001
-            self.get_logger().warn("[vision] 失败帧保存失败: {}".format(e))
+            self.get_logger().warn(f"[vision] 失败帧保存失败: {e}")
 
     def _dump_debug(self, res, tid):
         try:
@@ -188,13 +189,13 @@ class VisionTradNode(Node):
             vis = cv2.cvtColor(self._frame, cv2.COLOR_GRAY2BGR)
             pl = res["plate"]
             cv2.circle(vis, (int(pl["cx"]), int(pl["cy"])), int(pl["r"]), (0, 255, 0), 2)
-            cv2.putText(vis, "{}={}".format(TYPE_NAMES[tid], tid), (8, 26),
+            cv2.putText(vis, f"{TYPE_NAMES[tid]}={tid}", (8, 26),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
             name = "vision_{}_{}.png".format(
                 time.strftime("%Y%m%d_%H%M%S"), TYPE_NAMES[tid])
             cv2.imwrite(os.path.join(self.debug_dir, name), vis)
         except Exception as e:                                    # noqa: BLE001
-            self.get_logger().warn("[vision] 调试图保存失败: {}".format(e))
+            self.get_logger().warn(f"[vision] 调试图保存失败: {e}")
 
 
 def main():

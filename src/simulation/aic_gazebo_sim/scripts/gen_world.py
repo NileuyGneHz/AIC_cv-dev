@@ -17,6 +17,7 @@ M3 与 M2 的区别（对齐官方 VirtualNext 平台，参考资料 docs/vnext_
     3 缺角 = 边缘一块「缺口」  4 孔洞 = 小深色圆孔
 """
 import argparse
+import io
 import math
 import os
 import random
@@ -525,80 +526,243 @@ def defect_rng(layout, slot_id, seed=None):
     return random.Random(int(seed) * 1000 + int(slot_id))
 
 
+# ---------------------------------------------------------------------------
+# 四类缺陷图案（2026-10-25 对齐官方图 8：赛题规则 §2「任务流程和物料」）
+#
+#   官方样本一行一类，各 4 块，形状固定、只有位置/朝向/尺寸随机：
+#     缺角 = 盘缘被咬掉一个楔形缺口（盘体缺口，不是画上去的线）
+#     污渍 = 一个实心圆斑
+#     孔洞 = 空心三角轮廓（细线围一圈，中间还是亮盘面）
+#     划痕 = 一条细弧钩（光滑开口曲线，没有折角）
+# ---------------------------------------------------------------------------
+CHIP_ANGLE_DEG = (26.0, 36.0)     # 缺口张角
+CHIP_DEPTH = (0.18, 0.26)         # 缺口深度（× 盘半径）
+SCRATCH_R = (0.0100, 0.0135)      # 划痕圆弧半径
+SCRATCH_SWEEP = (2.4, 3.5)        # 划痕弧张角（rad）
+STAIN_R = (0.0050, 0.0070)        # 污渍斑半径
+HOLE_SIDE = (0.0150, 0.0200)      # 孔洞三角边长
+DEFECT_LINE_W = 0.0016            # 细线宽（盘径 80 mm 下约 1/50 盘径）
+
+# 网格（visual-only）与 SDF 放在一起：worlds/meshes/。
+# 为什么不用 model://：本包 install 的是**拷贝**（不是符号链接），新建的 model
+# 目录不会自动出现在 install/share/.../models 下，实测报
+#   Unable to find file with URI [model://aic_plate/meshes/...]
+# 所以走 file:// + 生成时算出的绝对路径 —— 世界是生成产物，换机器重跑
+# scripts/gen_world.py 即可刷新路径。缺角盘 = 被挖掉楔口的圆盘网格，
+# 碰撞体仍是整圆柱：物理不关心缺口，视觉上已经是真缺口。
+MESH_DIR = os.path.join(PKG, "worlds", "meshes")
+PLATE_MESH_URI = "file://" + os.path.join(MESH_DIR, "plate_{:02d}.obj")
+TUBE_MESH_URI = "file://" + os.path.join(MESH_DIR, "marker_tube.obj")
+
+
+def _obj_text(verts, faces, note=""):
+    """写 OBJ。每个三角面单独给一条法线（平面着色）。
+
+    坑：只写 v/f 不写 vn，Ogre 会拿默认法线去算光照，盘面直接过曝成纯白
+    （实测 2026-10-26：缺角盘在白底上完全看不出缺口）。法线按面的绕向算，
+    所以下面的建模里**绕向必须是外法线方向**。
+    """
+    out = ["# {}\n".format(note)]
+    out += ["v {:.6f} {:.6f} {:.6f}\n".format(x, y, z) for x, y, z in verts]
+    for i, (a, b, c) in enumerate(faces):
+        p0, p1, p2 = verts[a - 1], verts[b - 1], verts[c - 1]
+        ux, uy, uz = (p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2])
+        vx, vy, vz = (p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2])
+        nx, ny, nz = (uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx)
+        ln = math.sqrt(nx * nx + ny * ny + nz * nz) or 1.0
+        out.append("vn {:.6f} {:.6f} {:.6f}\n".format(nx / ln, ny / ln, nz / ln))
+    for i, (a, b, c) in enumerate(faces):
+        out.append("f {}//{n} {}//{n} {}//{n}\n".format(a, b, c, n=i + 1))
+    return "".join(out)
+
+
+def notch_disc_mesh(r, th, a0, da, depth_frac, n=160):
+    """圆盘挖掉一个楔形缺口后的三角网格（顶面 + 底面 + 侧壁，米制）。
+
+    a0 = 缺口起始角，da = 缺口张角，depth_frac = 缺口深度 / 盘半径。
+    缺口形状与官方样本一致：两条直边从盘缘收进到内侧一个尖点。
+    """
+    half = 0.5 * th
+    r_apex = r * (1.0 - depth_frac)
+    pts = []
+    span = 2.0 * math.pi - da
+    for k in range(n):
+        ang = a0 + da + span * k / float(n)
+        pts.append((r * math.cos(ang), r * math.sin(ang)))
+    apex_ang = a0 + 0.5 * da
+    pts.append((r_apex * math.cos(apex_ang), r_apex * math.sin(apex_ang)))
+    m = len(pts)
+    verts = [(0.0, 0.0, half), (0.0, 0.0, -half)]
+    for (x, y) in pts:
+        verts.append((x, y, half))
+        verts.append((x, y, -half))
+    faces = []
+    # 顶点表：1 = 顶心，2 = 底心，从 3 起每个边界点占两个（顶、底）：
+    #   p_i 顶 = 3 + 2i，p_i 底 = 4 + 2i（都是 OBJ 的 1-based 序号）
+    for i in range(m):
+        j = (i + 1) % m
+        ti, tj = 3 + 2 * i, 3 + 2 * j
+        bi, bj = ti + 1, tj + 1
+        faces.append((1, ti, tj))          # 顶面（法线 +z）
+        faces.append((2, bj, bi))          # 底面（法线 -z）
+        faces.append((ti, bi, bj))         # 侧壁（外法线）
+        faces.append((ti, bj, tj))
+    return _obj_text(verts, faces, "notched plate r={:.4f} notch={:.1f}deg".format(
+        r, math.degrees(da)))
+
+
+def tube_mesh(r_out, r_in, th, n=192):
+    """圆环管（放料标记）：外壁 + 内壁 + 上下环面。中间是空的，不挡盘面缺口。"""
+    half = 0.5 * th
+    verts = []
+    for k in range(n):
+        a = 2.0 * math.pi * k / n
+        c, s = math.cos(a), math.sin(a)
+        verts.append((r_out * c, r_out * s, half))    # 0
+        verts.append((r_out * c, r_out * s, -half))   # 1
+        verts.append((r_in * c, r_in * s, half))      # 2
+        verts.append((r_in * c, r_in * s, -half))     # 3
+    faces = []
+    for k in range(n):
+        j = (k + 1) % n
+        ot_i, ob_i, it_i, ib_i = 4 * k, 4 * k + 1, 4 * k + 2, 4 * k + 3
+        ot_j, ob_j, it_j, ib_j = 4 * j, 4 * j + 1, 4 * j + 2, 4 * j + 3
+        faces.append((ot_i + 1, ob_i + 1, ob_j + 1))   # 外壁
+        faces.append((ot_i + 1, ob_j + 1, ot_j + 1))
+        faces.append((it_i + 1, it_j + 1, ib_j + 1))   # 内壁（朝轴心）
+        faces.append((it_i + 1, ib_j + 1, ib_i + 1))
+        faces.append((ot_i + 1, ot_j + 1, it_j + 1))   # 上环面（+z）
+        faces.append((ot_i + 1, it_j + 1, it_i + 1))
+        faces.append((ob_i + 1, ib_i + 1, ib_j + 1))   # 下环面（-z）
+        faces.append((ob_i + 1, ib_j + 1, ob_j + 1))
+    return _obj_text(verts, faces, "marker tube")
+
+
+def write_plate_meshes(layout, seed=None):
+    """写出缺角盘与标记环的网格，返回 {物料号: 文件名}（只含缺角盘）。"""
+    os.makedirs(MESH_DIR, exist_ok=True)
+    plate = layout["plate"]
+    r = float(plate["diameter"]) / 2.0
+    th = float(plate["thickness"])
+    types = material_types(layout, len(slot_centers(layout)))
+    out = {}
+    for i, t in enumerate(types, start=1):
+        if int(t) != 3:
+            continue
+        rng = defect_rng(layout, i, seed) or random.Random(3 * 1000 + i)
+        a0 = rng.uniform(0.0, 2.0 * math.pi)
+        da = math.radians(rng.uniform(*CHIP_ANGLE_DEG))
+        depth = rng.uniform(*CHIP_DEPTH)
+        name = "plate_{:02d}.obj".format(i)
+        with io.open(os.path.join(MESH_DIR, name), "w", encoding="utf-8") as f:
+            f.write(notch_disc_mesh(r, th, a0, da, depth))
+        out[i] = name
+    name = "marker_tube.obj"
+    wall = float((layout.get("marker") or {}).get("wall_m", 0.0005))
+    with io.open(os.path.join(MESH_DIR, name), "w", encoding="utf-8") as f:
+        f.write(tube_mesh(r + wall, r, th))
+    return out
+
+
+def _poly_segments(pts, width):
+    """把折线轮廓 pts 拆成 [(cx, cy, theta, length), ...] 的细长段（未定位、未旋转）。"""
+    out = []
+    for i in range(len(pts) - 1):
+        (x0, y0), (x1, y1) = pts[i], pts[i + 1]
+        dx, dy = x1 - x0, y1 - y0
+        ln = math.hypot(dx, dy)
+        if ln < 1e-6:
+            continue
+        # 两端各延长半个线宽：不然折角处会留缝，连通域会被切断
+        out.append((0.5 * (x0 + x1), 0.5 * (y0 + y1), math.atan2(dy, dx),
+                    ln + (width if width > 0 else 0.0)))
+    return out
+
+
 def defect_visual(mtype, r, d, rng):
     """返回该类缺陷的视觉列表 [(name, pose, geometry, material), ...]。
 
-    官方 VirtualNext 的四类标记都是**画在盘面上的形状**，不是把盘体挖掉：
-      1 划痕 = 细长直条（可长可短）
-      2 污渍 = 实心圆斑
-      3 破损 = 细折线（∧ / L 形裂纹），两条细臂在顶点相接
-      4 孔洞 = 小圆（描边/实心都有，这里用深色小圆）
-    「破损」不再用压在盘缘的深色方块假装缺角 —— 官方样本里没有边缘缺口，
-    而是盘面上的一道折线裂纹（见平台说明书 §2.2.2 的样本图）。
+    对齐官方图 8（赛题规则 §2「任务流程和物料」）的四类样本，一类一种形状，
+    只有位置 / 朝向 / 尺度随机（规则原文：划痕长短、污渍形状、缺角大小、孔洞大小随机）：
+      1 划痕 = 一条细弧钩（光滑开口曲线，无折角）
+      2 污渍 = 一个实心圆斑
+      3 缺角 = 盘缘楔形缺口 —— **盘体本身的缺口**，见 notch_disc_mesh()，
+               这里不返回任何 visual（缺口由网格挖出来）
+      4 孔洞 = 空心正三角轮廓（1.6 mm 细线，中间仍是亮盘面）
+
+    实现约束：Fortress 的 visual 没有折线/多边形，曲线 = 一串首尾重叠的细长 box
+    （640x480 俯视下与一条连续线无差别）；三角轮廓 = 3 段首尾相接的细长 box。
+    全部 visual-only、无 collision。
     """
-    if mtype == 1:          # 划痕：细长薄条，绕 Z 任意朝向
+    z = d + 0.0004
+    line_mat = ("<ambient>0.18 0.18 0.19 1</ambient>"
+                "<diffuse>0.22 0.22 0.23 1</diffuse>")
+    solid_mat = ("<ambient>0.16 0.13 0.10 1</ambient>"
+                 "<diffuse>0.20 0.16 0.12 1</diffuse>")
+    wd = DEFECT_LINE_W
+
+    def place(segs, mat, solid=False):
+        """把盘内坐标的线段列表移到盘面上：抽位置 + 朝向，返回 visual 列表。"""
+        hw = max(abs(sx) + 0.5 * ln for sx, _sy, _th, ln in segs) + wd
+        hh = max(abs(sy) + 0.5 * ln for _sx, sy, _th, ln in segs) + wd
         if rng is None:
-            cx, cy, yaw, ln, wd = 0.004, -0.006, math.radians(25.0), 0.052, 0.0025
+            cx, cy, yaw = 0.002, -0.004, math.radians(20.0)
         else:
-            ln = 0.052 * rng.uniform(*JITTER[1]["len"])
-            wd = 0.0025 * rng.uniform(*JITTER[1]["wid"])
-            lim = max(0.0, 0.93 * r - ln / 2.0)      # 整条划痕留在判据域内
-            ang = rng.uniform(0.0, 2.0 * math.pi)
-            rad = rng.uniform(0.0, lim)
-            cx, cy, yaw = rad * math.cos(ang), rad * math.sin(ang), rng.uniform(-math.pi, math.pi)
-        return [("defect_scratch",
-                 "{:.3f} {:.3f} {:.5f} 0 0 {:.3f}".format(cx, cy, d + 0.0004, yaw),
-                 "<box><size>{:.3f} {:.4f} 0.0008</size></box>".format(ln, wd),
-                 "<ambient>0.20 0.20 0.21 1</ambient><diffuse>0.24 0.24 0.25 1</diffuse>")]
-    if mtype == 2:          # 污渍：扁圆深色斑
-        if rng is None:
-            cx, cy, rad2 = 0.008, 0.004, 0.012
-        else:
-            rad2 = 0.012 * rng.uniform(*JITTER[2]["radius"])
-            lim = max(0.0, 0.93 * r - rad2)
-            ang = rng.uniform(0.0, 2.0 * math.pi)
-            rad = rng.uniform(0.0, lim)
-            cx, cy = rad * math.cos(ang), rad * math.sin(ang)
-        return [("defect_stain",
-                 "{:.3f} {:.3f} {:.5f} 0 0 0".format(cx, cy, d + 0.0002),
-                 "<cylinder><radius>{:.3f}</radius><length>0.0006</length></cylinder>".format(rad2),
-                 "<ambient>0.16 0.13 0.10 1</ambient><diffuse>0.20 0.16 0.12 1</diffuse>")]
-    if mtype == 3:          # 破损：两道细臂组成的折线裂纹（∧ 形）
-        u = 1.0 if rng is None else rng.uniform(*JITTER[3]["size"])
-        arm = 0.017 * u                      # 单臂长
-        wid = 0.0022 * u                     # 线宽
-        half = math.radians(62.0)            # 两臂夹角的一半 ~124° 顶角
-        if rng is None:
-            vx, vy, base = 0.004, -0.002, math.radians(20.0)
-        else:
-            lim = max(0.0, 0.60 * r)
-            ang = rng.uniform(0.0, 2.0 * math.pi)
-            rad = rng.uniform(0.0, lim)
-            vx, vy = rad * math.cos(ang), rad * math.sin(ang)
-            base = rng.uniform(-math.pi, math.pi)
+            lim_x = max(0.0, 0.93 * r - hw)
+            lim_y = max(0.0, 0.93 * r - hh)
+            cx = rng.uniform(-lim_x, lim_x) if lim_x > 1e-4 else 0.0
+            cy = rng.uniform(-lim_y, lim_y) if lim_y > 1e-4 else 0.0
+            yaw = rng.uniform(-math.pi, math.pi)
+        c, s = math.cos(yaw), math.sin(yaw)
         out = []
-        for tag, th in (("a", base - half), ("b", base + half)):
-            cx = vx + 0.5 * arm * math.cos(th)
-            cy = vy + 0.5 * arm * math.sin(th)
+        for i, (sx, sy, th, ln) in enumerate(segs):
             out.append((
-                "defect_break_" + tag,
-                "{:.4f} {:.4f} {:.5f} 0 0 {:.4f}".format(cx, cy, d + 0.0004, th),
-                "<box><size>{:.4f} {:.4f} 0.0008</size></box>".format(arm, wid),
-                "<ambient>0.18 0.18 0.19 1</ambient><diffuse>0.22 0.22 0.23 1</diffuse>"))
+                "defect_{}_{:02d}".format(mtype, i),
+                "{:.4f} {:.4f} {:.5f} 0 0 {:.4f}".format(
+                    cx + sx * c - sy * s, cy + sx * s + sy * c, z, th + yaw),
+                "<box><size>{:.4f} {:.4f} 0.0008</size></box>".format(ln, wd),
+                mat))
         return out
-    # 孔洞：小深色圆
-    if rng is None:
-        cx, cy, rad4 = -0.004, 0.012, 0.0055
-    else:
-        rad4 = 0.0055 * rng.uniform(*JITTER[4]["radius"])
-        lim = max(0.0, 0.93 * r - rad4)
-        ang = rng.uniform(0.0, 2.0 * math.pi)
-        rad = rng.uniform(0.0, lim)
-        cx, cy = rad * math.cos(ang), rad * math.sin(ang)
-    return [("defect_hole",
-             "{:.3f} {:.3f} {:.5f} 0 0 0".format(cx, cy, d + 0.0002),
-             "<cylinder><radius>{:.4f}</radius><length>0.0006</length></cylinder>".format(rad4),
-             "<ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse>")]
+
+    u = 1.0 if rng is None else rng.uniform(0.90, 1.15)     # 整体尺度微变
+
+    if mtype == 1:                                   # 划痕：细弧钩
+        rad = rng.uniform(*SCRATCH_R) * u if rng else 0.0115
+        sweep = rng.uniform(*SCRATCH_SWEEP) if rng else 2.9
+        base = rng.uniform(0.0, 2.0 * math.pi) if rng else 0.0
+        seg = 12
+        pts = [(rad * math.cos(base + sweep * i / seg),
+                rad * math.sin(base + sweep * i / seg)) for i in range(seg + 1)]
+        pts = [(x - pts[seg // 2][0], y - pts[seg // 2][1]) for x, y in pts]
+        return place(_poly_segments(pts, wd), line_mat)
+
+    if mtype == 2:                                   # 污渍：实心圆斑
+        rad = rng.uniform(*STAIN_R) * u if rng else 0.0060
+        # 实心圆 = 一个扁圆柱（最简单的「实心」；不需要用细线一层层铺）
+        hw = rad
+        if rng is None:
+            cx, cy = 0.002, -0.004
+        else:
+            lim = max(0.0, 0.93 * r - hw)
+            ang = rng.uniform(0.0, 2.0 * math.pi)
+            dist = rng.uniform(0.0, lim) if lim > 1e-4 else 0.0
+            cx, cy = dist * math.cos(ang), dist * math.sin(ang)
+        return [("defect_{}_00".format(mtype),
+                 "{:.4f} {:.4f} {:.5f} 0 0 0".format(cx, cy, z),
+                 "<cylinder><radius>{:.4f}</radius><length>0.0006</length></cylinder>".format(rad),
+                 solid_mat)]
+
+    if mtype == 3:                                   # 缺角：盘体缺口（网格）
+        return []
+
+    # 孔洞：空心正三角轮廓（闭合细线）
+    side = rng.uniform(*HOLE_SIDE) * u if rng else 0.0175
+    h = side * math.sqrt(3.0) / 2.0
+    rot = rng.uniform(0.0, 2.0 * math.pi) if rng else 0.0
+    tri = [(-side / 2, -h / 3), (side / 2, -h / 3), (0.0, 2.0 * h / 3)]
+    c, s = math.cos(rot), math.sin(rot)
+    tri = [(x * c - y * s, x * s + y * c) for x, y in tri]
+    return place(_poly_segments(tri + [tri[0]], wd), line_mat)
 
 
 def plate_model(layout, slot, mtype, jitter_seed=None):
@@ -643,7 +807,11 @@ def plate_model(layout, slot, mtype, jitter_seed=None):
         "          <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>\n",
         '        </collision>\n',
         '        <visual name="disc">\n',
-        "          <geometry><cylinder><radius>{}</radius><length>{}</length></cylinder></geometry>\n".format(r, th),
+        # 缺角（type=3）：盘体用「挖掉楔口」的网格（碰撞仍是整圆柱，见
+        # notch_disc_mesh 的说明）；其余三类是完整圆柱 + 盘面上的图案。
+        ("          <geometry><mesh><uri>{}</uri></mesh></geometry>\n".format(
+            PLATE_MESH_URI.format(idx)) if int(mtype) == 3 else
+         "          <geometry><cylinder><radius>{}</radius><length>{}</length></cylinder></geometry>\n".format(r, th)),
         "          <material>\n",
         "            <ambient>0.42 0.44 0.46 1</ambient>\n",
         "            <diffuse>0.50 0.52 0.54 1</diffuse>\n",
@@ -838,8 +1006,9 @@ def marker_model(layout):
                 "        <inertial><mass>0.005</mass><inertia>"
                 "<ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz></inertia></inertial>\n"
                 '        <visual name="ring">\n'
-                "          <geometry><cylinder><radius>{r:.4f}</radius>"
-                "<length>{h:.4f}</length></cylinder></geometry>\n"
+                # 圆环**管**（不是实心圆柱）：缺角盘被套环后缺口仍然透出来。
+                # 管壁 = marker.wall_m（0.5 mm），外径 = 盘半径 + 壁厚。
+                "          <geometry><mesh><uri>{}</uri></mesh></geometry>\n"
                 "          <material>\n"
                 "            <ambient>{a:.2f} {b:.2f} {c:.2f} 1</ambient>\n"
                 "            <diffuse>{d:.2f} {e:.2f} {f:.2f} 1</diffuse>\n"
@@ -847,6 +1016,7 @@ def marker_model(layout):
                 "          </material>\n"
                 "        </visual>\n"
                 "      </link>\n    </model>\n\n".format(
+                    TUBE_MESH_URI,
                     p=name, i=i, x=x0 + (i - 1) * pitch, y=y_park, r=R, h=th,
                     a=amb[0], b=amb[1], c=amb[2],
                     d=dif[0], e=dif[1], f=dif[2],
@@ -857,6 +1027,8 @@ def marker_model(layout):
 def build_sdf(layout, seed=None):
     slots = slot_centers(layout)
     types = material_types(layout, len(slots))
+    # 先把缺角盘 / 标记环的网格写出来（model:// 引用，必须早于世界加载）
+    write_plate_meshes(layout, seed)
 
     out = [HEADER, base_plate_model(layout), rack_shelf_model(layout),
            staging_table_model(layout), material_park_model(layout),

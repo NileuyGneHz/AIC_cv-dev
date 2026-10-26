@@ -1,21 +1,27 @@
-"""四类缺陷判据（1=划痕 2=污渍 3=破损 4=孔洞）。
+"""四类缺陷判据（1=划痕 2=污渍 3=缺角 4=孔洞）。
 
-判据顺序按「最不容易被混淆」到「最容易被混淆」排：
-  A 孔洞：小而圆、比盘面暗一大截（贯穿孔，反射率最低）
-  B 破损：盘面上的一道折线裂纹（细、弯、填不满外接框）
-  C 划痕：极细长的直条
-  D 污渍：盘内大片圆润灰斑（兜底）
+图案口径 = 官方图 8（赛题规则 §2「任务流程和物料」）：一类一种形状，
+只有位置 / 朝向 / 尺度随机。
 
-顺序很重要。早期版本把「贴边」放在第一条，结果盘缘的圆柱侧壁暗沿
-（rad≈0.85、细长、面积小）抢在划痕/孔洞之前命中，准确率只有 6/12。
-现在用「细长（elong>5）就不是缺角」和「面积占比下限」两道独立闸门把它挡掉。
+  A 缺角：盘缘被咬掉一个楔口 —— 整块缺陷**贴着盘缘**，是最硬的判据
+  B 孔洞：空心三角轮廓 —— 1.6 mm 细线围一圈，**能把中间围住**
+  C 污渍：实心圆斑 —— 又圆又实，占满自己的外接框
+  D 划痕：细弧钩 —— 细线、开口，不闭合也不实心（兜底）
 
-阈值在 24 张仿真帧（12 张 M1 样本 + 12 张 M2 运行帧）上整定，圆精修后的实测分布：
-  hole    frac 0.020~0.021  circ 0.97~0.98  drop 123~126   （阈值 frac<=0.045, drop>=100）
-  break   fill 0.3~0.5       elong 1.5~3.0   frac 0.010~0.030（阈值 fill<=0.62, elong<=6）
-  scratch elong 23.4~23.5   circ 0.11                      （阈值 elong>=12, circ<=0.25）
-  stain   frac 0.094~0.099  circ 0.92~0.94                 （兜底）
-侧壁暗沿 elong 7.4~11.3 全部 > 6，不会误判破损；四条判据的实际间隔都在 2 倍以上。
+为什么这个顺序：三类之间的判别量互不重叠，先判「最不可能被别的类命中」的。
+
+实测（2026-10-26，logs/patterns4，640x480、盘半径 85 px、圆精修后）：
+  类     frac    circ   elong  rad   fill  solidity enclosed
+  划痕   0.010   0.11   2.1    0.21  0.19  0.24     0.00
+  污渍   0.023   0.96   1.0    0.11  0.87  1.05     0.00
+  缺角   0.009   0.49   3.0    0.87  0.60  1.08     0.00
+  孔洞   0.016   0.27   1.1    0.11  0.25  0.44     1.22
+四道判据的关键量间隔都在 2 倍以上：rad 0.87 vs 0.21；enclosed 1.22 vs 0.000；
+circ 0.96 vs 0.49；其余落兜底。
+
+坑（历史）：盘缘圆柱侧壁的暗沿本身是「细长、贴边、面积小」的连通域（elong 7~11、
+rad 0.87），一度把早期版本骗到 6/12。现在它在「缺角」条被 elong <= 4.5 挡掉，
+在「污渍」条被 circ 挡掉 —— 不要再把 elong 放到最后判。
 """
 
 TYPE_SCRATCH = 1
@@ -26,27 +32,24 @@ TYPE_HOLE = 4
 TYPE_NAMES = {
     TYPE_SCRATCH: "scratch",
     TYPE_STAIN: "stain",
-    TYPE_CHIP: "chip",   # 官方称「破损」：盘面折线裂纹
+    TYPE_CHIP: "chip",     # 官方称「缺角」：盘缘楔形缺口（平台说明书旧版写作「破损」）
     TYPE_HOLE: "hole",
 }
 
 DEFAULT_RULES = {
-    "hole_circ_min": 0.70,
-    "hole_frac_min": 0.008,
-    "hole_frac_max": 0.045,
-    "hole_drop_min": 100.0,
-    # 贴边孔洞的兜底判据：斑内近黑像素（< level-120）占比。实测孔 0.23~0.75，其余 0.000。
-    "hole_core_min": 0.05,
-    # 破损 = 盘面上的一道折线裂纹（两条细臂，∧ 形）。它和划痕一样细，但**填不满自己的
-    # 最小外接矩形**：直线 fill≈0.85~0.95，圆斑≈0.78，折线只有 0.3~0.5。
-    # 侧壁暗沿的 elong 7.4~11.3（>6）会被 elongation 闸门挡掉。
-    "break_fill_max": 0.62,
-    "break_elong_max": 6.0,
-    "break_rad_max": 0.85,
-    "break_frac_min": 0.004,
-    "break_frac_max": 0.060,
-    "scratch_elong_min": 12.0,
-    "scratch_circ_max": 0.25,
+    # A 缺角：贴盘缘（rad 接近 1）且不是细长条（盘缘暗沿 elong 7~11 要挡掉）
+    "chip_rad_min": 0.70,
+    "chip_elong_max": 4.5,
+    "chip_frac_min": 0.004,
+    # B 孔洞：空心轮廓围住的像素 / 轮廓自身像素。空心 1.22，其余三类恒为 0.000。
+    "hole_enclosed_min": 0.30,
+    "hole_frac_min": 0.004,
+    "hole_frac_max": 0.060,
+    # C 污渍：又圆又实的斑
+    "stain_circ_min": 0.60,
+    "stain_solidity_min": 0.85,
+    "stain_rad_max": 0.60,
+    "stain_frac_min": 0.004,
 }
 
 
@@ -61,39 +64,31 @@ def classify(comps, rules=None):
     if not comps:
         return 0, "no candidate"
 
-    # A 孔洞
+    # A 缺角（盘缘缺口）
     for c in comps:
-        if (c["circ"] >= r["hole_circ_min"]
-                and r["hole_frac_min"] <= c["frac"] <= r["hole_frac_max"]
-                and c["drop"] >= r["hole_drop_min"]):
-            return TYPE_HOLE, "hole frac={:.3f} circ={:.2f} drop={:.0f}".format(
-                c["frac"], c["circ"], c["drop"])
+        if (c["rad"] >= r["chip_rad_min"]
+                and c["elong"] <= r["chip_elong_max"]
+                and c["frac"] >= r["chip_frac_min"]):
+            return TYPE_CHIP, "chip rad={:.2f} elong={:.1f} frac={:.3f}".format(
+                c["rad"], c["elong"], c["frac"])
 
-    # A2 贴边孔洞（几何量失效时靠「近黑核心」认）
-    #    孔洞落在盘缘时，圆柱侧壁的阴影会和孔口连成一个连通域：circ 从 0.98 掉到 0.3、
-    #    elong 从 1.0 涨到 2~9、rad 0.78 —— 上面那条和下面的缺角条都判不了它
-    #    （实测被判成缺角，drop 101 夹在缺角 81~86 与孔洞 123 之间，光看亮度也分不开）。
-    #    但孔是通透的：斑内 level-120 以下的像素占 0.23~0.75，其余三类全是 0.000。
+    # B 孔洞（空心轮廓：能把中间围住）
     for c in comps:
-        if c.get("core_frac", 0.0) >= r["hole_core_min"]:
-            return TYPE_HOLE, "hole core={:.2f}（贴边，几何量不可靠）".format(
-                c["core_frac"])
+        if (c.get("enclosed", 0.0) >= r["hole_enclosed_min"]
+                and r["hole_frac_min"] <= c["frac"] <= r["hole_frac_max"]):
+            return TYPE_HOLE, "hole enclosed={:.2f} frac={:.3f}".format(
+                c.get("enclosed", 0.0), c["frac"])
 
-    # B 破损（盘面折线裂纹）：细、弯、填不满外接框
+    # C 污渍（实心圆斑）
     for c in comps:
-        if (c["fill"] <= r["break_fill_max"]
-                and c["elong"] <= r["break_elong_max"]
-                and c["rad"] <= r["break_rad_max"]
-                and r["break_frac_min"] <= c["frac"] <= r["break_frac_max"]):
-            return TYPE_CHIP, "break fill={:.2f} elong={:.1f} rad={:.2f} frac={:.3f}".format(
-                c["fill"], c["elong"], c["rad"], c["frac"])
+        if (c["circ"] >= r["stain_circ_min"]
+                and c["solidity"] >= r["stain_solidity_min"]
+                and c["rad"] <= r["stain_rad_max"]
+                and c["frac"] >= r["stain_frac_min"]):
+            return TYPE_STAIN, "stain circ={:.2f} sol={:.2f} frac={:.3f}".format(
+                c["circ"], c["solidity"], c["frac"])
 
-    # C 划痕
-    for c in comps:
-        if c["elong"] >= r["scratch_elong_min"] and c["circ"] <= r["scratch_circ_max"]:
-            return TYPE_SCRATCH, "scratch elong={:.1f} circ={:.2f}".format(
-                c["elong"], c["circ"])
-
-    # D 污渍（兜底：取「面积 x 圆度」最大的那个）
-    c = max(comps, key=lambda x: x["area"] * x["circ"])
-    return TYPE_STAIN, "stain frac={:.3f} circ={:.2f}".format(c["frac"], c["circ"])
+    # D 划痕（兜底：面积最大的候选，细弧钩）
+    c = max(comps, key=lambda x: x["area"])
+    return TYPE_SCRATCH, "scratch fill={:.2f} elong={:.1f} frac={:.3f}".format(
+        c["fill"], c["elong"], c["frac"])

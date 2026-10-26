@@ -43,10 +43,21 @@ class DetectorParams(object):
         self.level_frac = 0.55
         # 缺陷分析域半径（占 r 的比例，必须 < 1：盘缘外的凹槽壁会污染）
         self.roi_frac = 0.93
-        # 连通域最小面积（像素）
-        self.min_comp_area = 120
-        # 形态学开运算核
-        self.open_ksize = 3
+        # 连通域最小面积：按盘面积的**比例**给，不写像素数。
+        # 坑（2026-10-25）：官方的孔洞/划痕是 1.6 mm 的**细线轮廓**（空心方/圆/三角、
+        # 折线），在 640x480 / 盘径 170 px 下整条轮廓只有 190~260 px —— 原来的固定阈值
+        # 120 px 太高，配合 3x3 开运算把它切碎成小块后全部被过滤，
+        # 表现是「盘面无缺陷候选」-> 视觉超时。
+        # 细线本身是**有效信号**，所以：下限压到占盘面积 0.85%（∅168 px 时约 60 px），
+        # 同时关掉开运算（3x3 开运算会把 1~2 px 宽的线直接吃掉，实测 354 px -> 85 px）。
+        # 盘缘暗沿的碎屑是 60~350 px、rad≈0.87 的量级，靠下面的 rad/elong 闸门挡，
+        # 不靠面积挡 —— 面积按比例写是为了换相机 / 换分辨率时判据不失效。
+        # 盘缘暗沿的碎屑实测只有 ≈0.003（占盘面积），下面 0.0045 能把它挡掉
+        self.min_comp_area_frac = 0.0045
+        # 积分下限，防止盘很小的时候把噪声放进来
+        self.min_comp_area_abs = 30
+        # 形态学开运算核（0 = 不做）
+        self.open_ksize = 0
         # ---- 整图找盘（主路径）----
         # 盘半径搜索范围（占图像短边比例）
         self.disc_rmin_frac = 0.09
@@ -152,10 +163,11 @@ def extract_defects(gray, plate, p):
 
     n, labels, stats, cents = cv2.connectedComponentsWithStats(dark, 8)
     plate_area = np.pi * r * r
+    amin = max(p.min_comp_area_abs, int(p.min_comp_area_frac * plate_area))
     comps = []
     for i in range(1, n):
         area = int(stats[i, cv2.CC_STAT_AREA])
-        if area < p.min_comp_area:
+        if area < amin:
             continue
         mask = (labels == i).astype(np.uint8)
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -175,6 +187,16 @@ def extract_defects(gray, plate, p):
         # 近黑像素占比：只在这个连通域内统计（不看 bbox，免得把周围亮台面算进来）
         comp_px = gray[labels == i]
         core_frac = float((comp_px < level - p.core_delta).mean())
+        # 空心度（环住）：轮廓围出的内部亮区像素 / 轮廓自身像素。
+        # 官方的「孔洞」是**空心轮廓**（方/圆/三角），轮廓围住一块亮盘面；而折线裂纹
+        # （破损）、条纹（划痕）、实心块（污渍）围不住任何东西，填充量恒为 0。
+        # 实测（2026-10-25）：空心□ 0.93；划痕/污渍/破损 ∧ 全是 0.000。
+        # 这是唯一能把空心□（fill 0.52 / solidity 0.53）和折角破损（fill 0.18 /
+        # solidity 0.31）分开的量 —— 两者的 fill / solidity / circ 区间是重叠的。
+        ff = mask.copy()
+        ff_mask = np.zeros((mask.shape[0] + 2, mask.shape[1] + 2), np.uint8)
+        cv2.floodFill(ff, ff_mask, (0, 0), 1)
+        hole_px = int((ff == 0).sum())
         comps.append({
             "area": area,
             "frac": area / plate_area,
@@ -186,6 +208,7 @@ def extract_defects(gray, plate, p):
             "mean": mean,
             "drop": level - mean,
             "core_frac": core_frac,
+            "enclosed": float(hole_px) / float(area) if area else 0.0,
             # 外接框只给可视化用（make_atlas.py 画缺陷框）；判据不读它
             "bbox": cv2.boundingRect(cnt),
         })
