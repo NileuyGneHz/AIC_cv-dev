@@ -196,6 +196,17 @@ ros2 launch aic_gazebo_sim sim_decision.launch.py invalid_rate:=0.3
 > SDF 里是**绝对** `file://` 路径）。换机器 / 搬目录后必须重跑
 > `scripts/gen_world.py` 才会刷新路径与几何。
 
+**改完图案怎么自检（约 40 秒）**：
+
+```bash
+./scripts/probe_patterns.sh                    # 起仿真 -> 12 块逐块拍俯视特写 -> 打特征与判型
+./scripts/probe_patterns.sh --out logs/p2      # 换输出目录（保留上一轮做对比）
+```
+
+它只用「世界 + 控制器 + 相机」，不用跑决策整轮：把 12 块料逐块 `spawn` 到置物台，
+拍一张主相机画面存成 `mNN.png`，再按 `materials.types` 比判型，最后打印 `命中 12/12`。
+§4.2 那张实测表就是在这批帧上整定的。
+
 **泛化检验（缺陷几何随机化）**：上面的数是固定几何。把 `sim_layout.yaml` 的
 `materials.jitter_seed` 设成非 0（或给生成器 `--seed N`），生成器按 `(seed, slot_id)`
 给每块铁片重抽缺陷的朝向 / 盘内位置 / 尺度（0.90–1.15 倍）、缺口的角位置与深度

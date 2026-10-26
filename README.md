@@ -26,7 +26,7 @@ bilibili: @珐儿姐  广西大学@robotz
 |---|---|---|
 | 参赛承诺书 | **已提交**（2026-10-22 确认） | 全员手写签字版 |
 | 技术文档（PPT） | 已完成 | `docs/competition/AIC视觉分拣技术文档/`，13 页，pptx + pdf |
-| 程序源代码 | 就绪待打包 | 仓库即源码；`./scripts/package_submission.sh` 一键出 zip（`git archive`，只含被跟踪文件，3.4 MB） |
+| 程序源代码 | 就绪待打包 | 仓库即源码；`./scripts/package_submission.sh` 一键出 zip（`git archive`，只含被跟踪文件，约 5.1 MB） |
 | 竞赛任务完成视频 | 未录 | 看板窗口一镜到底，约 80–100 s，1080P；步骤见 `docs/guides/obs_recording_playbook.md` |
 | 参赛视频（固定机位） | 未录 | 手机/相机固定三脚架拍选手 + 屏幕全景 |
 | 视觉识别图集 | **已生成** | `视觉识别图集.png`（4 类 × 3，原图/结果对照，中文标注）+ 特征表 CSV；脚本 `make_submission_atlas.py` 可复算 |
@@ -51,6 +51,9 @@ ros2 launch aic_dashboard dashboard.launch.py vision_backend:=trad
 
 # 直接看 Gazebo 窗口（需要本机有图形会话）
 ./scripts/run_sim.sh --gui
+
+# 改了四类缺陷图案 / 判据阈值后：12 块逐块拍特写 + 打印判型（约 40 s）
+./scripts/probe_patterns.sh
 ```
 
 验收判据、逐级耗时与排障顺序见 **`docs/guides/acceptance_manual.md`**——想知道
