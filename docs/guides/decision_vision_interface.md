@@ -8,7 +8,7 @@
 | 方向 | 话题 | 类型 | QoS | 说明 |
 |---|---|---|---|---|
 | vision → decision | `/vision/material_type` | `std_msgs/String` | reliable + volatile，深度 10（双方默认即可互通） | 每个位点一次识别结果 |
-| vision → dashboard（诊断，可选） | `/vision/detail` | `std_msgs/String`（JSON） | 默认（reliable，深度 10） | **只给看板写「运行日志」用**，决策不订阅；每次结果一条，超时也发一条（`type=0`） |
+| vision → dashboard（诊断，可选） | `/vision/detail` | `std_msgs/String`（JSON） | 默认（reliable，深度 10） | **只给看板写「运行日志」用**，决策不订阅；**只在识别成功时发**，每个位点一条 |
 | decision → vision（可选） | `/vision/trigger` | `std_msgs/Empty` | 默认 | 采集请求。**当前决策侧未启用**（`vision_trigger_enable=false`）；vision 若为「来图即识别」模式可忽略 |
 
 `/vision/detail` 的 payload 是单行 JSON（`ensure_ascii=false`），字段固定：
@@ -23,7 +23,7 @@
 
 | 字段 | 含义 |
 |---|---|
-| `type` / `name` / `cn` | 类型号 1..4（失败为 0）/ 内部名 / 中文名 |
+| `type` / `name` / `cn` | 类型号 1..4 / 内部名 / 中文名 |
 | `reason` | 命中的那条判据（含它的实测值），排障时先看这里 |
 | `ms` | 从 `/vision/trigger` 到发布结果的耗时 |
 | `retry` | 这一拍试了几帧才判出（帧停稳需要几帧，正常 1–3） |

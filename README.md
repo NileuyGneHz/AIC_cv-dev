@@ -56,6 +56,17 @@ ros2 launch aic_dashboard dashboard.launch.py vision_backend:=trad
 ./scripts/probe_patterns.sh
 ```
 
+**看识别结果**：起看板后在浏览器 `127.0.0.1:8080` 右侧 **(4) 运行日志**里，
+每个位点一行（判型 + 判据用的特征 + 盘半径 + 耗时 + 真值比对）：
+
+```text
+20:54:59 位点 4：识别 孔洞（hole）｜enclosed 1.209 · circ 0.268 · frac 0.016｜盘 r 85.1px｜280 ms｜真值 孔洞 ✓
+```
+
+同一份信息还出现在 `/api/state`（`events` / `last_vision_detail`）、ROS 控制台的
+`[vision] 判定 hole（4）<- …`、以及验收产物 `logs/verify_m2_*.csv`。
+字段逐项说明见 `docs/guides/visual_walkthrough.md` §4.7。
+
 验收判据、逐级耗时与排障顺序见 **`docs/guides/acceptance_manual.md`**——想知道
 「现在到底好不好、坏了先看哪里」，只看那一份就够。
 

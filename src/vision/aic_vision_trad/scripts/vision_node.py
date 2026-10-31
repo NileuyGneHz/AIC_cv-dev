@@ -156,8 +156,6 @@ class VisionTradNode(Node):
             if self.debug_dir:
                 self._dump_fail("nolocate")
             self.get_logger().warn("[vision] 超时前始终未识别成功，本次不发结果")
-            self._publish_detail(None, None, "超时：{:.1f}s 内 {} 帧都未判出".format(
-                self.frame_wait_s, self._retry))
             self._deadline = None
 
     def _process(self):
@@ -187,7 +185,7 @@ class VisionTradNode(Node):
         return True
 
     def _publish_detail(self, tid, comp, why, res=None, ms=None):
-        """发一条诊断 JSON 给看板（失败时 tid=None）。
+        """发一条诊断 JSON 给看板：**只发识别成功的结果**（失败不发，看板日志只记识别结果）。
 
         字段：type/name/cn 是「识别到什么」，reason 是命中哪条判据，
         feat 是那条判据用到的归一化特征，r/refined 是盘定位质量，

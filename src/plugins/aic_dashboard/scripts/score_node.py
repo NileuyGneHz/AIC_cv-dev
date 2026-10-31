@@ -240,8 +240,8 @@ class ScoreState:
     def on_vision_detail(self, msg):
         """把「识别到什么 + 关键判据 + 耗时」写进运行日志（一行一条，便于回看）。
 
-        触发时机：vision 每发出一拍结果（或最终超时放弃）就发一条 /vision/detail，
-        所以这里**每个位点只会来一条**（中间的重试帧只进 ROS 日志，不进面板）。
+        触发时机：vision 每发出一拍识别结果就发一条 /vision/detail，
+        所以这里**每个位点只会来一条**（重试帧与失败场景只进 ROS 日志，不进面板）。
         """
         try:
             d = json.loads(msg.data)
@@ -263,16 +263,15 @@ class ScoreState:
                 head = "位点 {}：".format(slot)
             else:
                 head = ""
-            if tid:
-                feat = d.get("feat") or {}
-                keys = FEAT_ORDER.get(tid, ("frac",))
-                shown = " · ".join("{} {:.3f}".format(k, float(feat[k]))
-                                   for k in keys if k in feat)
-                text = "{}识别 {}（{}）｜{}｜盘 r {}px{}".format(
-                    head, TYPE_NAMES.get(tid, tid), d.get("name", "?"),
-                    shown or d.get("reason", ""), d.get("r", "?"), tail)
-            else:
-                text = "{}识别失败｜{}{}".format(head, d.get("reason", "未知原因"), tail)
+            if not tid:
+                return                      # 只记识别成功的结果；失败场景看 ROS 日志
+            feat = d.get("feat") or {}
+            keys = FEAT_ORDER.get(tid, ("frac",))
+            shown = " · ".join("{} {:.3f}".format(k, float(feat[k]))
+                               for k in keys if k in feat)
+            text = "{}识别 {}（{}）｜{}｜盘 r {}px{}".format(
+                head, TYPE_NAMES.get(tid, tid), d.get("name", "?"),
+                shown or d.get("reason", ""), d.get("r", "?"), tail)
             self.events.append((time.strftime("%H:%M:%S"), text))
             del self.events[:-EVENTS_MAX]
 
