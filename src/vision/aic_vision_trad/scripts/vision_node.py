@@ -2,6 +2,8 @@
 """传统视觉识别节点：相机图像 + 采集请求 -> /vision/material_type。
 
 接口（见 docs/guides/decision_vision_interface.md）：
+  /vision/material_type  std_msgs/String  "1".."4"   —— 决策/看板读这一条（契约不变）
+  /vision/detail         std_msgs/String  JSON       —— 诊断用：类型名 + 判据 + 关键特征 + 耗时
   订阅 /camera/image        sensor_msgs/Image   相机（仿真是 gz 相机桥出来的）
   订阅 /vision/trigger      std_msgs/Empty      采集请求（龙门到位后由其发出）
   发布 /vision/material_type std_msgs/String     "1".."4"，每次请求最多一条
@@ -17,6 +19,7 @@
   收到帧的本地单调时钟时刻，和 ROS 时钟完全解耦。
 """
 
+import json
 import os
 import sys
 import time
@@ -31,7 +34,7 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import Empty, String
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from defect_classifier import DEFAULT_RULES, TYPE_NAMES, classify
+from defect_classifier import DEFAULT_RULES, TYPE_CN, TYPE_NAMES, classify_full
 from plate_detector import DetectorParams, detect
 
 
@@ -43,6 +46,8 @@ class VisionTradNode(Node):
         self.trigger_topic = self.declare_parameter("trigger_topic", "/vision/trigger").value
         self.result_topic = self.declare_parameter("result_topic", "/vision/material_type").value
         self.debug_dir = self.declare_parameter("debug_dir", "").value
+        # 诊断话题：给看板「运行日志」用的富信息（JSON）。关掉不影响 /vision/material_type。
+        self.detail_topic = self.declare_parameter("detail_topic", "/vision/detail").value
         self.frame_wait_s = float(self.declare_parameter("frame_wait_s", 1.20).value)
         self.settle_skip_s = float(self.declare_parameter("settle_skip_s", 0.25).value)
         self.max_stale_s = float(self.declare_parameter("max_stale_s", 1.50).value)
@@ -77,6 +82,7 @@ class VisionTradNode(Node):
         self.create_subscription(Image, self.image_topic, self._on_image, img_qos)
         self.create_subscription(Empty, self.trigger_topic, self._on_trigger, 10)
         self.pub = self.create_publisher(String, self.result_topic, 10)
+        self.detail_pub = self.create_publisher(String, self.detail_topic, 10)
 
         self.create_timer(0.02, self._tick)
         self.get_logger().info(
@@ -106,6 +112,8 @@ class VisionTradNode(Node):
         if self._deadline is not None:
             self.get_logger().warn("[vision] 上一次请求未处理完，忽略本次")
             return
+        self._req_t0 = now          # 触发时刻：结果里的「用时」从这里算
+        self._retry = 0             # 这一拍重试了几帧（写进日志，便于判断图形是否停稳）
         self._deadline = now + self.frame_wait_s
         # 坑：到位那一刻相机正在停稳，第一帧常常还是「运动中」的画面（实测偏移一整个库位）。
         #     直接拿它识别会稳定失败，所以跳过 settle_skip_s 内到达的帧，之后持续重试到超时。
@@ -148,6 +156,8 @@ class VisionTradNode(Node):
             if self.debug_dir:
                 self._dump_fail("nolocate")
             self.get_logger().warn("[vision] 超时前始终未识别成功，本次不发结果")
+            self._publish_detail(None, None, "超时：{:.1f}s 内 {} 帧都未判出".format(
+                self.frame_wait_s, self._retry))
             self._deadline = None
 
     def _process(self):
@@ -156,7 +166,8 @@ class VisionTradNode(Node):
         if res is None:
             self.get_logger().warn("[vision] 本帧未定位到铁片，等下一帧重试")
             return False
-        tid, why = classify(res["comps"], self.rules)
+        tid, why, comp = classify_full(res["comps"], self.rules)
+        self._retry += 1
         if tid == 0:
             self.get_logger().warn(f"[vision] 本帧盘面无缺陷候选（{why}），等下一帧重试")
             return False
@@ -165,13 +176,46 @@ class VisionTradNode(Node):
         msg.data = str(tid)
         self.pub.publish(msg)
         self._last_pub = time.monotonic()
-        self.get_logger().info("[vision] 判定 {}（{}）<- {}（r={:.1f}px{}）".format(
+        ms = int(round((self._last_pub - getattr(self, "_req_t0", self._last_pub)) * 1000.0))
+        self.get_logger().info("[vision] 判定 {}（{}）<- {}（r={:.1f}px{}，用时 {} ms）".format(
             TYPE_NAMES[tid], tid, why, res["plate"]["r"],
-            "" if res["plate"].get("refined") else "，精修被拒"))
+            "" if res["plate"].get("refined") else "，精修被拒", ms))
+        self._publish_detail(tid, comp, why, res=res, ms=ms)
 
         if self.debug_dir:
             self._dump_debug(res, tid)
         return True
+
+    def _publish_detail(self, tid, comp, why, res=None, ms=None):
+        """发一条诊断 JSON 给看板（失败时 tid=None）。
+
+        字段：type/name/cn 是「识别到什么」，reason 是命中哪条判据，
+        feat 是那条判据用到的归一化特征，r/refined 是盘定位质量，
+        ms 是从 /vision/trigger 到发布结果的耗时，retry 是这一拍试了几帧。
+        """
+        d = {
+            "type": int(tid) if tid else 0,
+            "name": TYPE_NAMES.get(tid, "none") if tid else "none",
+            "cn": TYPE_CN.get(tid, "") if tid else "",
+            "reason": why,
+            "ms": int(ms) if ms is not None else None,
+            "retry": int(getattr(self, "_retry", 0)),
+        }
+        if res is not None and res.get("plate"):
+            pl = res["plate"]
+            d["r"] = round(float(pl["r"]), 1)
+            d["refined"] = bool(pl.get("refined"))
+            d["n_comp"] = len(res.get("comps") or [])
+        if comp:
+            feats = ("frac", "circ", "elong", "rad", "fill", "solidity",
+                     "enclosed", "drop", "area")
+            d["feat"] = {k: round(float(comp[k]), 4) for k in feats if k in comp}
+        try:
+            msg = String()
+            msg.data = json.dumps(d, ensure_ascii=False)
+            self.detail_pub.publish(msg)
+        except Exception as e:                                     # noqa: BLE001
+            self.get_logger().warn(f"[vision] 诊断消息发布失败: {e}")
 
     def _dump_fail(self, tag):
         try:

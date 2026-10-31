@@ -8,7 +8,31 @@
 | 方向 | 话题 | 类型 | QoS | 说明 |
 |---|---|---|---|---|
 | vision → decision | `/vision/material_type` | `std_msgs/String` | reliable + volatile，深度 10（双方默认即可互通） | 每个位点一次识别结果 |
+| vision → dashboard（诊断，可选） | `/vision/detail` | `std_msgs/String`（JSON） | 默认（reliable，深度 10） | **只给看板写「运行日志」用**，决策不订阅；每次结果一条，超时也发一条（`type=0`） |
 | decision → vision（可选） | `/vision/trigger` | `std_msgs/Empty` | 默认 | 采集请求。**当前决策侧未启用**（`vision_trigger_enable=false`）；vision 若为「来图即识别」模式可忽略 |
+
+`/vision/detail` 的 payload 是单行 JSON（`ensure_ascii=false`），字段固定：
+
+```json
+{"type": 4, "name": "hole", "cn": "孔洞",
+ "reason": "hole enclosed=1.22 frac=0.016",
+ "ms": 316, "retry": 1, "r": 85.1, "refined": true, "n_comp": 1,
+ "feat": {"frac": 0.0157, "circ": 0.273, "elong": 1.1, "rad": 0.11, "fill": 0.25,
+          "solidity": 0.45, "enclosed": 1.218, "drop": 60.1, "area": 356.0}}
+```
+
+| 字段 | 含义 |
+|---|---|
+| `type` / `name` / `cn` | 类型号 1..4（失败为 0）/ 内部名 / 中文名 |
+| `reason` | 命中的那条判据（含它的实测值），排障时先看这里 |
+| `ms` | 从 `/vision/trigger` 到发布结果的耗时 |
+| `retry` | 这一拍试了几帧才判出（帧停稳需要几帧，正常 1–3） |
+| `r` / `refined` | 盘半径（px）/ 圆精修是否被采纳（`false` 时会退回 Hough 值，特征会略糙） |
+| `n_comp` | 盘内暗连通域个数（>1 说明有干扰，判据按优先级取用） |
+| `feat` | 判据实际读的归一化特征：`frac` 面积占比、`circ` 圆度、`elong` 长宽比、`rad` 重心半径、`fill` 填充率、`solidity` 凸包填充、`enclosed` 闭合轮廓围住比、`drop` 亮度落差 |
+
+> 契约上这条话题**可以不要**：`aic_vision_trad` 侧由参数 `detail_topic` 控制（置空即关闭），
+> 决策与 PLC 链路只读 `/vision/material_type`，不受影响。
 
 参数化入口：`aic_decision_params.yaml` 的 `vision_topic` / `vision_trigger_topic` / `vision_trigger_enable`
 （参数名就是这个下划线形式，没有 `vision.` 这种分组前缀）。

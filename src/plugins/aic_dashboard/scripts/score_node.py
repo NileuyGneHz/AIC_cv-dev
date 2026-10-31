@@ -55,6 +55,18 @@ from aic_msgs.msg import MaterialTask
 import yaml
 
 TYPE_NAMES = {1: "划痕", 2: "污渍", 3: "破损", 4: "孔洞"}
+
+# 运行日志的环形缓冲长度。一轮 12 位点大约 12(识别) + 12(判分) + 12(吸取)
+# + 12(放入) + 1(本轮完成) ≈ 49 条，留到 80 才能把「识别 → 判分」这对线索一起留住。
+EVENTS_MAX = 80
+
+# 识别日志里按类型显示「判据靠的那个量」（顺序即展示顺序）
+FEAT_ORDER = {
+    1: ("fill", "elong", "frac"),          # 划痕：细弧钩，靠兜底
+    2: ("circ", "solidity", "frac"),       # 污渍：实心圆斑
+    3: ("rad", "elong", "frac"),           # 破损：贴盘缘缺口
+    4: ("enclosed", "circ", "frac"),       # 孔洞：空心轮廓
+}
 TYPE_NAMES_EN = {1: "SCRATCH", 2: "STAIN", 3: "CHIP", 4: "HOLE"}
 # 库位墙格口边框色（BGR）：跟随该格物料的流转状态
 RACK_STATUS_COLORS = {
@@ -145,7 +157,8 @@ class ScoreState:
         self.extra = {}          # 节点侧补充的状态（手动模式/帧龄/端口），随快照下发                          # [(time_str, text)]
         self.cur_visit = 0
         self.cur_slot = None
-        self.last_vision = None                   # 最近一条识别结果（显示用）
+        self.last_vision = None                   # 最近一条识别结果（"1".."4"，横幅用）
+        self.last_vision_detail = None            # 最近一条识别详情（/vision/detail 的 JSON）
 
         # ---- 态势：龙门 + 物料 ----
         self.gantry = {"x": 0.0, "y": 0.0, "z": 0.0, "moving": False}
@@ -224,6 +237,45 @@ class ScoreState:
         with self.lock:
             self.last_vision = msg.data
 
+    def on_vision_detail(self, msg):
+        """把「识别到什么 + 关键判据 + 耗时」写进运行日志（一行一条，便于回看）。
+
+        触发时机：vision 每发出一拍结果（或最终超时放弃）就发一条 /vision/detail，
+        所以这里**每个位点只会来一条**（中间的重试帧只进 ROS 日志，不进面板）。
+        """
+        try:
+            d = json.loads(msg.data)
+        except (ValueError, TypeError):
+            return
+        with self.lock:
+            self.last_vision_detail = d
+            slot = self.cur_slot
+            tid = int(d.get("type") or 0)
+            ms = d.get("ms")
+            tail = ""
+            if ms is not None:
+                tail += "｜{} ms".format(int(ms))
+            if slot and 1 <= slot <= len(self.types):
+                true_t = self.types[slot - 1]
+                if tid:
+                    tail += "｜真值 {} {}".format(
+                        TYPE_NAMES.get(true_t, true_t), "✓" if tid == true_t else "✗")
+                head = "位点 {}：".format(slot)
+            else:
+                head = ""
+            if tid:
+                feat = d.get("feat") or {}
+                keys = FEAT_ORDER.get(tid, ("frac",))
+                shown = " · ".join("{} {:.3f}".format(k, float(feat[k]))
+                                   for k in keys if k in feat)
+                text = "{}识别 {}（{}）｜{}｜盘 r {}px{}".format(
+                    head, TYPE_NAMES.get(tid, tid), d.get("name", "?"),
+                    shown or d.get("reason", ""), d.get("r", "?"), tail)
+            else:
+                text = "{}识别失败｜{}{}".format(head, d.get("reason", "未知原因"), tail)
+            self.events.append((time.strftime("%H:%M:%S"), text))
+            del self.events[:-EVENTS_MAX]
+
     def on_done(self, msg):
         slot = int(msg.data)
         with self.lock:
@@ -268,7 +320,7 @@ class ScoreState:
                 pl["x"], pl["y"] = self.gantry["x"], self.gantry["y"]
                 self.events.append((time.strftime("%H:%M:%S"), "物料 %02d（%s）已吸取" % (
                     slot, TYPE_NAMES.get(pl["type"], pl["type"]))))
-                del self.events[:-40]
+                del self.events[:-EVENTS_MAX]
             elif not attach and pl["status"] == "held":
                 t = pl["type"]
                 # 落位：类型列格心；层位由放置时的 z_joint 反推（阶梯 y）
@@ -281,7 +333,7 @@ class ScoreState:
                 self.events.append((time.strftime("%H:%M:%S"),
                                     "物料 %02d 放入货架（%s 列 · 第 %d 层）" % (
                                         slot, TYPE_NAMES.get(t, t), level)))
-                del self.events[:-40]
+                del self.events[:-EVENTS_MAX]
 
     def _judge_locked(self, slot, got):
         st = self.slots[slot]
@@ -299,7 +351,7 @@ class ScoreState:
             text = "位点 %d：错误（真值 %s，判成 %s）" % (
                 slot, TYPE_NAMES.get(true_t, true_t), TYPE_NAMES.get(got, got))
         self.events.append((st["t"], text))
-        del self.events[:-30]
+        del self.events[:-EVENTS_MAX]
         if all(s["status"] in ("ok", "wrong", "timeout") for s in self.slots.values()):
             ok = sum(1 for s in self.slots.values() if s["status"] == "ok")
             self.events.append((time.strftime("%H:%M:%S"),
@@ -317,6 +369,7 @@ class ScoreState:
             self.events.append((time.strftime("%H:%M:%S"), "已重置，等待新一轮巡视"))
             self.cur_visit, self.cur_slot = 0, None
             self.last_vision = None
+            self.last_vision_detail = None
 
     def check_timeout(self, limit_s):
         """末位点兜底：最后一条 GOTO 之后不会再有新任务，无法靠「换位」推断超时。
@@ -348,6 +401,7 @@ class ScoreState:
                 "cur_visit": self.cur_visit,
                 "cur_slot": self.cur_slot,
                 "last_vision": self.last_vision,
+                "last_vision_detail": self.last_vision_detail,
                 "done": pending == 0,
                 "slots": [{"id": s, "true_type": self.types[s - 1], **st}
                           for s, st in sorted(self.slots.items())],
@@ -676,7 +730,16 @@ async function tick() {
     document.getElementById("s-rest").textContent = d.score.pending;
     document.getElementById("cur").textContent =
       d.done ? "本轮完成" : ("巡视中 · 第 " + d.cur_visit + " 位点");
-    const vis = d.last_vision ? ("识别结果：" + (TN[d.last_vision] || ("非法值 " + d.last_vision))) : "";
+    let vis = d.last_vision ? ("识别结果：" + (TN[d.last_vision] || ("非法值 " + d.last_vision))) : "";
+    // 详情（/vision/detail）：把判据里最硬的那个量 + 耗时一起显示，便于现场判断「差点判错」
+    const vd = d.last_vision_detail;
+    if (vd && vd.type) {
+      const f = vd.feat || {};
+      const order = {1:["fill","elong"],2:["circ","solidity"],3:["rad","elong"],4:["enclosed","circ"]}[vd.type] || ["frac"];
+      const kv = order.filter(k => f[k] !== undefined).map(k => k + " " + Number(f[k]).toFixed(2)).join(" · ");
+      if (kv) vis += "（" + kv + "）";
+      if (vd.ms !== null && vd.ms !== undefined) vis += " " + vd.ms + " ms";
+    }
     const banner = document.getElementById("banner");
     banner.style.display = vis ? "block" : "none";
     banner.textContent = vis;
@@ -708,7 +771,9 @@ async function tick() {
     const log = document.getElementById("log");
     const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 24;
     log.innerHTML = (d.events || []).map(([t, txt]) => {
-      const cls = txt.includes("正确") ? "e-ok" : (txt.includes("错误") || txt.includes("超时") ? "e-bad" : "e-info");
+      const cls = (txt.includes("✓") || txt.includes("正确")) ? "e-ok"
+                : (txt.includes("✗") || txt.includes("错误") || txt.includes("超时") || txt.includes("识别失败")) ? "e-bad"
+                : "e-info";
       return `<div class="${cls}">${t} ${txt}</div>`;
     }).join("");
     if (atBottom) log.scrollTop = log.scrollHeight;
@@ -833,6 +898,8 @@ class ScoreNode(Node):
         arrived_topic = self.declare_parameter("arrived_topic", "/sim/gantry_arrived").value
         handled_topic = self.declare_parameter("handled_topic", "/sim/handle_done").value
         vision_topic = self.declare_parameter("vision_topic", "/vision/material_type").value
+        vision_detail_topic = self.declare_parameter(
+            "vision_detail_topic", "/vision/detail").value
         image_topic = self.declare_parameter("image_topic", "/camera/image").value
         scene_image_topic = self.declare_parameter("scene_image_topic", "/scene/image").value
         # 末位点超时兜底（见 ScoreState.check_timeout）
@@ -857,6 +924,9 @@ class ScoreNode(Node):
         self.create_subscription(UInt8, arrived_topic, self.state.on_arrived, 10)
         self.create_subscription(UInt8, handled_topic, self.state.on_done, 10)
         self.create_subscription(String, vision_topic, self.state.on_vision, 10)
+        # 诊断详情（JSON）：只用来写「运行日志」，不参与判分
+        self.create_subscription(String, vision_detail_topic,
+                                 self.state.on_vision_detail, 10)
         js_qos = QoSProfile(depth=10, history=HistoryPolicy.KEEP_LAST,
                             reliability=ReliabilityPolicy.BEST_EFFORT)
         from sensor_msgs.msg import JointState

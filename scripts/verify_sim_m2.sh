@@ -168,8 +168,13 @@ if ! grep -q 'material_' "${POSE}" 2>/dev/null; then
   : > "${POSE}"
   for k in $(seq 1 "${N_SLOTS}"); do
     mname="$(printf 'material_%02d' "${k}")"
-    xyz="$(ign model --model "${mname}" --pose 2>/dev/null \
-           | awk '/Pose \[ XYZ/{getline; gsub(/[][ ]+/," "); print; exit}')"
+    # 每条查两次：运行时 gz transport 偶发丢一次 discovery，重试一次基本都能回来
+    for _ in 1 2; do
+      xyz="$(timeout 8 ign model --model "${mname}" --pose 2>/dev/null \
+             | awk '/Pose \[ XYZ/{getline; gsub(/[][ ]+/," "); print; exit}')"
+      [[ -n "${xyz}" ]] && break
+      sleep 1
+    done
     if [[ -n "${xyz}" ]]; then
       # shellcheck disable=SC2086
       set -- ${xyz}
@@ -177,7 +182,13 @@ if ! grep -q 'material_' "${POSE}" 2>/dev/null; then
         "${mname}" "$1" "$2" "$3" >> "${POSE}"
     fi
   done
-  grep -c '^name:' "${POSE}" | sed 's/^/[verify] 兜底取到物料数：/'
+  got=$(grep -c '^name:' "${POSE}" || true)
+  echo "[verify] 兜底取到物料数：${got}/${N_SLOTS}"
+  if [[ "${got}" -eq 0 ]]; then
+    echo "[verify] 提示：两条通道都拿不到位姿（gz transport 在该轮末尾失联）——" \
+         "落位核对只能跳过；需要这项结论时，在没有其它仿真的机器上直接" \
+         "跑 ./scripts/verify_sim_m2.sh（不加 --domain）通常能拿到。"
+  fi
 fi
 
 echo "[verify] 断言 -----------------------------------------------------------------"

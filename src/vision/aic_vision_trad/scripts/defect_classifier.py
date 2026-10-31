@@ -37,6 +37,14 @@ TYPE_NAMES = {
     TYPE_HOLE: "hole",
 }
 
+# 看板 / 日志里的中文显示名（与 score_node 的 TYPE_NAMES 保持一致；规则正文把 3 写作「缺角」）
+TYPE_CN = {
+    TYPE_SCRATCH: "划痕",
+    TYPE_STAIN: "污渍",
+    TYPE_CHIP: "破损",
+    TYPE_HOLE: "孔洞",
+}
+
 DEFAULT_RULES = {
     # A 缺角：贴盘缘（rad 接近 1）且不是细长条（盘缘暗沿 elong 7~11 要挡掉）
     "chip_rad_min": 0.62,
@@ -58,12 +66,23 @@ def classify(comps, rules=None):
     """comps: plate_detector.extract_defects 的输出。
 
     返回 (type_id, reason)；type_id 为 0 表示没有可用候选（调用方不该发消息）。
+    需要「判据命中的是哪个连通域」时用 classify_full()。
+    """
+    tid, why, _c = classify_full(comps, rules)
+    return tid, why
+
+
+def classify_full(comps, rules=None):
+    """同 classify()，额外返回**判据实际命中的那个连通域**（dict，可能为 None）。
+
+    看板的「识别结果」日志要用它把关键特征（frac/circ/enclosed/...）一并显示出来，
+    这样现场看一行日志就知道判据是靠哪个量过的，不必再翻调试图。
     """
     r = dict(DEFAULT_RULES)
     if rules:
         r.update(rules)
     if not comps:
-        return 0, "no candidate"
+        return 0, "no candidate", None
 
     # A 缺角（盘缘缺口）
     for c in comps:
@@ -71,14 +90,14 @@ def classify(comps, rules=None):
                 and c["elong"] <= r["chip_elong_max"]
                 and c["frac"] >= r["chip_frac_min"]):
             return TYPE_CHIP, "chip rad={:.2f} elong={:.1f} frac={:.3f}".format(
-                c["rad"], c["elong"], c["frac"])
+                c["rad"], c["elong"], c["frac"]), c
 
     # B 孔洞（空心轮廓：能把中间围住）
     for c in comps:
         if (c.get("enclosed", 0.0) >= r["hole_enclosed_min"]
                 and r["hole_frac_min"] <= c["frac"] <= r["hole_frac_max"]):
             return TYPE_HOLE, "hole enclosed={:.2f} frac={:.3f}".format(
-                c.get("enclosed", 0.0), c["frac"])
+                c.get("enclosed", 0.0), c["frac"]), c
 
     # C 污渍（实心圆斑）
     for c in comps:
@@ -87,9 +106,9 @@ def classify(comps, rules=None):
                 and c["rad"] <= r["stain_rad_max"]
                 and c["frac"] >= r["stain_frac_min"]):
             return TYPE_STAIN, "stain circ={:.2f} sol={:.2f} frac={:.3f}".format(
-                c["circ"], c["solidity"], c["frac"])
+                c["circ"], c["solidity"], c["frac"]), c
 
     # D 划痕（兜底：面积最大的候选，细弧钩）
     c = max(comps, key=lambda x: x["area"])
     return TYPE_SCRATCH, "scratch fill={:.2f} elong={:.1f} frac={:.3f}".format(
-        c["fill"], c["elong"], c["frac"])
+        c["fill"], c["elong"], c["frac"]), c
