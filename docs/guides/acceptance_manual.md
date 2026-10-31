@@ -255,6 +255,7 @@ ros2 launch aic_dashboard dashboard.launch.py vision_backend:=trad
 | 来料架逐格变空 | 每轮少一块，12 轮后全空 | 上料没按格位取 |
 | 分拣架逐格填满 | 四列各三层，颜色按类型聚在一起 | 类型判错或层位抢用 |
 | 12 个判分格变绿 | 每格显示类型与耗时，无红 | 看 `TIMEOUT` 还是 `WRONG` |
+| (4) 运行日志里每位点一行 `位点 N：识别 xx（name）｜…｜真值 xx ✓` | 12 行全 `✓`，耗时 250–400 ms | 判错看行里的特征值离阈值多远（字段表见 `visual_walkthrough.md` §4.7） |
 
 窗口怎么开、按钮怎么用、画面不出来的排查，见 `visual_walkthrough.md`；
 录制一镜到底的流程在 `obs_recording_playbook.md`，这里不重复。
