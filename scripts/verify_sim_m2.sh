@@ -180,6 +180,10 @@ if ! grep -q 'material_' "${POSE}" 2>/dev/null; then
       set -- ${xyz}
       printf 'name: "%s"\nposition { x: %s y: %s z: %s }\n' \
         "${mname}" "$1" "$2" "$3" >> "${POSE}"
+    elif [[ ! -s "${POSE}" ]]; then
+      # 第一块就两条通道都拿不到 -> transport 已经失联，别再把剩下 11 块各等 16 s
+      echo "[verify] 兜底首块即失联，放弃逐个查询（省 2~3 分钟）"
+      break
     fi
   done
   got=$(grep -c '^name:' "${POSE}" || true)

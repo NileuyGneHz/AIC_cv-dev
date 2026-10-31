@@ -771,7 +771,7 @@ async function tick() {
     const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 24;
     log.innerHTML = (d.events || []).map(([t, txt]) => {
       const cls = (txt.includes("✓") || txt.includes("正确")) ? "e-ok"
-                : (txt.includes("✗") || txt.includes("错误") || txt.includes("超时") || txt.includes("识别失败")) ? "e-bad"
+                : (txt.includes("✗") || txt.includes("错误") || txt.includes("超时")) ? "e-bad"
                 : "e-info";
       return `<div class="${cls}">${t} ${txt}</div>`;
     }).join("");
